@@ -1,0 +1,121 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../generated/prisma"
+  moduleFormat = "cjs"
+}
+
+// Prisma 7 takes the connection string from prisma.config.ts (CLI) and from the
+// driver adapter (runtime), so no `url` belongs in this block.
+datasource db {
+  provider = "sqlite"
+}
+
+model AiModel {
+  id        String   @id @default(cuid())
+  name      String
+  protocol  String // "openai" | "anthropic"
+  baseUrl   String
+  model     String
+  apiKey    String // encrypted at rest
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  connections DbConnection[]
+}
+
+model DbConnection {
+  id             String   @id @default(cuid())
+  name           String
+  engine         String // "postgres" | "mysql" | "mssql" | "sqlite"
+  host           String?
+  port           Int?
+  database       String?
+  username       String?
+  password       String? // encrypted at rest
+  filePath       String? // sqlite
+  ssl            Boolean  @default(false)
+  status         String   @default("draft") // draft | questions | ready | failed
+  statusDetail   String?
+  readOnlyReport String? // JSON evidence from the probe
+  schemaJson     String? // cached introspection snapshot
+  aiModelId      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  aiModel       AiModel?              @relation(fields: [aiModelId], references: [id], onDelete: SetNull)
+  knowledge     KnowledgeBase?
+  questions     OnboardingQuestion[]
+  conversations Conversation[]
+}
+
+model KnowledgeBase {
+  id           String   @id @default(cuid())
+  connectionId String   @unique
+  summary      String
+  content      String // markdown knowledge base
+  tablesJson   String // per-table notes and business meaning
+  glossaryJson String // term -> definition / SQL hint
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  connection DbConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+}
+
+model OnboardingQuestion {
+  id           String   @id @default(cuid())
+  connectionId String
+  position     Int
+  prompt       String
+  answer       String?
+  skipped      Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  connection DbConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@index([connectionId, position])
+}
+
+model Conversation {
+  id           String   @id @default(cuid())
+  connectionId String
+  title        String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  connection DbConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  messages   Message[]
+
+  @@index([connectionId, updatedAt])
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String
+  role           String // "user" | "assistant"
+  content        String
+  sql            String?
+  explanation    String?
+  error          String?
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  run          QueryRun?
+
+  @@index([conversationId, createdAt])
+}
+
+model QueryRun {
+  id              String   @id @default(cuid())
+  messageId       String   @unique
+  sql             String
+  columnsJson     String
+  displayRowsJson String
+  rowCount        Int
+  durationMs      Int
+  truncated       Boolean  @default(false)
+  resultPath      String? // JSONL spill file used by exports
+  error           String?
+  createdAt       DateTime @default(now())
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+}

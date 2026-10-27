@@ -1,0 +1,81 @@
+.soft-aurora {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.soft-aurora__blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(72px);
+  opacity: 0.55;
+  will-change: transform;
+  animation: soft-aurora-drift 22s ease-in-out infinite;
+}
+
+.soft-aurora__blob--a {
+  width: min(56vw, 720px);
+  height: min(56vw, 720px);
+  top: -18%;
+  left: -8%;
+  background: radial-gradient(circle, rgba(45, 212, 191, 0.45) 0%, transparent 68%);
+  animation-delay: 0s;
+}
+
+.soft-aurora__blob--b {
+  width: min(48vw, 620px);
+  height: min(48vw, 620px);
+  top: -10%;
+  right: -12%;
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.38) 0%, transparent 70%);
+  animation-delay: -7s;
+  animation-duration: 28s;
+}
+
+.soft-aurora__blob--c {
+  width: min(42vw, 540px);
+  height: min(42vw, 540px);
+  bottom: 8%;
+  left: 28%;
+  background: radial-gradient(circle, rgba(94, 234, 212, 0.22) 0%, transparent 72%);
+  animation-delay: -14s;
+  animation-duration: 26s;
+}
+
+.soft-aurora__grid {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(148, 163, 184, 0.14) 1px, transparent 1px);
+  background-size: 22px 22px;
+  mask-image: radial-gradient(ellipse 70% 55% at 50% 0%, #000 20%, transparent 75%);
+  opacity: 0.45;
+}
+
+.soft-aurora__vignette {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, transparent 0%, rgba(7, 16, 28, 0.55) 55%, var(--bg) 100%),
+    radial-gradient(ellipse 80% 60% at 50% -10%, transparent 30%, rgba(7, 16, 28, 0.7) 100%);
+}
+
+@keyframes soft-aurora-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  33% {
+    transform: translate3d(4%, 3%, 0) scale(1.06);
+  }
+  66% {
+    transform: translate3d(-3%, 5%, 0) scale(0.96);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .soft-aurora__blob {
+    animation: none;
+  }
+}

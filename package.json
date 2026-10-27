@@ -1,0 +1,131 @@
+{
+  "name": "easy-reporter",
+  "productName": "EasyReporter",
+  "version": "0.0.1",
+  "private": true,
+  "description": "EasyReporter — a desktop reporting application built with Next.js, Electron and Prisma.",
+  "author": {
+    "name": "Mohammad Taheri",
+    "url": "https://taheri.vercel.app"
+  },
+  "homepage": "https://taheri.vercel.app",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mohammadtaheri/easy-reporter.git"
+  },
+  "license": "UNLICENSED",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "concurrently -k -n next,electron -c cyan,magenta \"npm:dev:next\" \"npm:dev:electron\"",
+    "dev:next": "next dev -p 3000",
+    "dev:electron": "npm run build:electron && wait-on tcp:127.0.0.1:3000 && cross-env EASYREPORTER_DEV=1 ELECTRON_OZONE_PLATFORM_HINT=x11 electron . --no-sandbox --ozone-platform=x11",
+    "build": "npm run build:next && npm run build:electron",
+    "build:next": "next build",
+    "build:electron": "esbuild electron/main.ts electron/preload.ts --bundle --platform=node --format=cjs --packages=external --outdir=dist-electron",
+    "start": "electron .",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:studio": "prisma studio",
+    "dist": "npm run build && electron-builder",
+    "dist:linux": "npm run build && electron-builder --linux",
+    "dist:win": "npm run build && electron-builder --win"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.18.0",
+    "@prisma/adapter-libsql": "^7.10.1",
+    "@prisma/client": "^7.10.1",
+    "exceljs": "^4.4.0",
+    "mssql": "^12.7.13",
+    "mysql2": "^3.24.6",
+    "pg": "^8.23.1",
+    "pg-cursor": "^2.15.3",
+    "pg-query-stream": "^4.10.3",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/mssql": "^12.3.0",
+    "@types/node": "^26.6.5",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "concurrently": "^10.0.6",
+    "cross-env": "^10.1.0",
+    "dotenv": "^18.0.9",
+    "electron": "^45.0.0",
+    "electron-builder": "^26.18.0",
+    "esbuild": "^0.28.2",
+    "next": "^16.4.3",
+    "prisma": "^7.10.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-markdown": "^10.1.0",
+    "typescript": "^7.0.2",
+    "wait-on": "^9.5.1"
+  },
+  "build": {
+    "appId": "app.taheri.easyreporter",
+    "productName": "EasyReporter",
+    "desktopName": "app.taheri.easyreporter",
+    "copyright": "Copyright © 2026 Mohammad Taheri",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist-electron/**/*",
+      "out/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "prisma/migrations",
+        "to": "prisma/migrations"
+      }
+    ],
+    "asarUnpack": [
+      "**/node_modules/@libsql/**"
+    ],
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Office",
+      "maintainer": "Mohammad Taheri <https://taheri.vercel.app>",
+      "synopsis": "Desktop reporting application",
+      "executableName": "easy-reporter",
+      "syncDesktopName": true
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    }
+  }
+}
