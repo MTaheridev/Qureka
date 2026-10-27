@@ -46,7 +46,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     const timer = window.setTimeout(() => {
       void (async () => {
         try {
-          const bridge = window.easyReporter;
+          const bridge = window.qureka;
           if (!bridge?.getSettings) {
             applyDocument(DEFAULTS);
             if (!cancelled) setReady(true);
@@ -71,7 +71,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const update = useCallback(async (patch: AppSettingsPatch) => {
-    const bridge = window.easyReporter;
+    const bridge = window.qureka;
     const localNext: AppSettings = { ...DEFAULTS, ...settings, ...patch };
     try {
       const next = bridge?.setSettings ? await bridge.setSettings(patch) : localNext;

@@ -2,29 +2,37 @@
 
 import { useEffect, useState } from 'react';
 import type {
+  AppLanguage,
   ConnectionView,
   KnowledgeView,
   OnboardingQuestionView,
 } from '../../shared/ipc';
 import { errorMessage, getApi } from '@/lib/api';
 import { useProgressFeed } from '@/lib/hooks';
-import { BusyLine, EmptyState, ErrorBanner, Icon, Notice, Spinner } from './ui';
+import { useSettings } from '@/lib/settings';
+import { ThinkingIndicator } from './ThinkingIndicator';
+import { EmptyState, ErrorBanner, Icon, Notice, Spinner } from './ui';
 
 export function SetupPanel({
   connection,
   onChanged,
   onOpenKnowledge,
+  onOpenChat,
 }: {
   connection: ConnectionView;
   onChanged: () => void | Promise<void>;
   onOpenKnowledge: () => void;
+  onOpenChat?: () => void;
 }) {
+  const { tr, settings } = useSettings();
   const [questions, setQuestions] = useState<OnboardingQuestionView[]>([]);
   const [knowledge, setKnowledge] = useState<KnowledgeView | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [brief, setBrief] = useState(connection.businessBrief ?? '');
+  const [questionLang, setQuestionLang] = useState<AppLanguage>(settings.language);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<'questions' | 'build' | null>(null);
+  const [busy, setBusy] = useState<'questions' | 'build' | 'brief' | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
   const [builtNow, setBuiltNow] = useState(false);
@@ -32,6 +40,28 @@ export function SetupPanel({
 
   const readOnly = connection.readOnly?.verdict === 'read-only';
   const canPrepare = readOnly && connection.status !== 'failed';
+
+  useEffect(() => {
+    setBrief(connection.businessBrief ?? '');
+  }, [connection.id, connection.businessBrief]);
+
+  async function generateQuestions() {
+    setBusy('questions');
+    setError(null);
+    try {
+      await getApi().connections.setBusinessBrief(connection.id, brief);
+      const rows = await getApi().onboarding.start(connection.id);
+      setQuestions(rows);
+      setAnswers(
+        Object.fromEntries(rows.map((question) => [question.id, question.answer ?? ''])),
+      );
+      await onChanged();
+    } catch (startError) {
+      setError(errorMessage(startError));
+    } finally {
+      setBusy(null);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -60,23 +90,6 @@ export function SetupPanel({
     };
   }, [connection.id]);
 
-  async function generateQuestions() {
-    setBusy('questions');
-    setError(null);
-    try {
-      const rows = await getApi().onboarding.start(connection.id);
-      setQuestions(rows);
-      setAnswers(
-        Object.fromEntries(rows.map((question) => [question.id, question.answer ?? ''])),
-      );
-      await onChanged();
-    } catch (startError) {
-      setError(errorMessage(startError));
-    } finally {
-      setBusy(null);
-    }
-  }
-
   async function saveAnswer(question: OnboardingQuestionView) {
     const value = answers[question.id] ?? '';
     setSavingId(question.id);
@@ -100,11 +113,27 @@ export function SetupPanel({
     }
   }
 
+  async function saveBrief() {
+    setBusy('brief');
+    setError(null);
+    try {
+      await getApi().connections.setBusinessBrief(connection.id, brief);
+      await onChanged();
+    } catch (saveError) {
+      setError(errorMessage(saveError));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function build() {
     setBusy('build');
     setError(null);
     setBuiltNow(false);
     try {
+      if (brief.trim() !== (connection.businessBrief ?? '').trim()) {
+        await getApi().connections.setBusinessBrief(connection.id, brief);
+      }
       const result = await getApi().onboarding.buildKnowledge(connection.id);
       setKnowledge(result);
       setBuiltNow(true);
@@ -132,10 +161,10 @@ export function SetupPanel({
   return (
     <div className="stack">
       {error ? <ErrorBanner message={error} /> : null}
-      {busy ? (
-        <BusyLine
-          message={busy === 'questions' ? 'Preparing onboarding questions' : 'Building the knowledge base'}
-          detail={progress?.message ?? 'Talking to the AI model'}
+      {busy === 'questions' || busy === 'build' ? (
+        <ThinkingIndicator
+          mode="thinking"
+          detail={progress?.message ?? null}
         />
       ) : null}
 
@@ -150,11 +179,31 @@ export function SetupPanel({
       ) : null}
 
       {questions.length === 0 ? (
-        <EmptyState
-          icon="sparkle"
-          title="Let the AI interview you"
-          description="The model reads the schema snapshot and asks up to 50 targeted questions about business meaning, time zones, statuses and data quality. Your answers become part of the knowledge base used to write SQL."
-          action={
+        <section className="panel stack setup-brief">
+          <div className="section-head">
+            <h2>Describe this database</h2>
+          </div>
+          <p className="muted">
+            In a few sentences, tell the AI what this database is for — who uses it, what the main
+            entities mean, and anything the schema alone would miss. Optional, but questions get
+            sharper with it.
+          </p>
+          <textarea
+            value={brief}
+            onChange={(event) => setBrief(event.target.value)}
+            placeholder="Example: This is our online shop. orders are customer purchases; status 3 means cancelled; amounts are in IRR; timestamps are Asia/Tehran."
+            rows={6}
+            disabled={!canPrepare || busy !== null}
+          />
+          <div className="question-actions">
+            <button
+              type="button"
+              className="button ghost"
+              onClick={() => void saveBrief()}
+              disabled={!canPrepare || busy !== null}
+            >
+              {busy === 'brief' ? <Spinner label="Saving" /> : 'Save description'}
+            </button>
             <button
               type="button"
               className="button primary"
@@ -163,27 +212,72 @@ export function SetupPanel({
             >
               <Icon name="sparkle" size={16} /> Generate questions
             </button>
-          }
-        />
+          </div>
+          <EmptyState
+            icon="sparkle"
+            title="Then the AI interviews you"
+            description="After you generate questions, answer them and build the knowledge base. The model uses your description plus the schema."
+          />
+        </section>
       ) : (
         <div className="setup-layout">
           <section className="stack">
             <div className="section-head">
               <h2>Onboarding questions</h2>
-              <span className="muted small">
-                {answered} of {questions.length} answered
-              </span>
+              <div className="question-lang-row">
+                <span className="muted small">
+                  {answered} of {questions.length} answered
+                </span>
+                <div className="segmented" role="group" aria-label={tr('questionLangLabel')}>
+                  <button
+                    type="button"
+                    className={questionLang === 'en' ? 'active' : undefined}
+                    onClick={() => setQuestionLang('en')}
+                  >
+                    {tr('questionLangEn')}
+                  </button>
+                  <button
+                    type="button"
+                    className={questionLang === 'fa' ? 'active' : undefined}
+                    onClick={() => setQuestionLang('fa')}
+                  >
+                    {tr('questionLangFa')}
+                  </button>
+                </div>
+              </div>
             </div>
+
+            <details className="setup-brief-edit">
+              <summary>Database description</summary>
+              <textarea
+                value={brief}
+                onChange={(event) => setBrief(event.target.value)}
+                rows={4}
+                disabled={busy !== null}
+              />
+              <button
+                type="button"
+                className="button small"
+                onClick={() => void saveBrief()}
+                disabled={busy !== null}
+              >
+                {busy === 'brief' ? <Spinner label="Saving" /> : 'Save description'}
+              </button>
+            </details>
 
             <ol className="question-list">
               {questions.map((question, index) => {
                 const value = answers[question.id] ?? '';
                 const isSaved = savedId === question.id;
+                const promptText =
+                  questionLang === 'fa'
+                    ? question.promptFa || question.prompt
+                    : question.prompt;
                 return (
                   <li key={question.id} className="question">
-                    <div className="question-head">
+                    <div className="question-head" dir={questionLang === 'fa' ? 'rtl' : 'ltr'}>
                       <span className="question-index">Q{index + 1}</span>
-                      <p>{question.prompt}</p>
+                      <p>{promptText}</p>
                     </div>
                     <textarea
                       value={value}
@@ -223,7 +317,7 @@ export function SetupPanel({
             <section className="panel side-card">
               <h3>Knowledge base</h3>
               <p className="muted small">
-                EasyReporter turns the schema, sample rows and your answers into a structured
+                Qureka turns the schema, your description, sample rows and answers into a structured
                 knowledge base. The chatbot uses it for every query.
               </p>
               <div className="progress-track" aria-hidden="true">
@@ -254,17 +348,23 @@ export function SetupPanel({
               ) : null}
             </section>
 
-            {builtNow ? (
+            {builtNow || connection.status === 'ready' ? (
               <Notice tone="ok">
                 <Icon name="check" size={16} />
-                <span>The knowledge base is ready. The chatbot for this connection is unlocked.</span>
+                <span>The knowledge base is ready. You can ask questions and export reports.</span>
+                {onOpenChat ? (
+                  <button type="button" className="button small primary" onClick={onOpenChat}>
+                    Open chat <Icon name="arrow-right" size={14} />
+                  </button>
+                ) : null}
               </Notice>
             ) : null}
 
             <section className="panel side-card">
               <h3>How it flows</h3>
               <ol className="steps">
-                <li className={questions.length > 0 ? 'done' : ''}>Schema snapshot and samples</li>
+                <li className="done">Schema snapshot and samples</li>
+                <li className={brief.trim() ? 'done' : ''}>Your description</li>
                 <li className={questions.length > 0 ? 'done' : ''}>Onboarding questions</li>
                 <li className={knowledge ? 'done' : ''}>Knowledge base</li>
                 <li className={connection.status === 'ready' ? 'done' : ''}>Read-only chat</li>

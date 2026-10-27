@@ -249,7 +249,7 @@ export function assertReadOnlySql(sql: string): string {
  * conservative: we only block when the selected expression looks like that field.
  */
 const SENSITIVE_NAME =
-  /^(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?token|refresh[_-]?token|auth[_-]?token|private[_-]?key|ssh[_-]?key|ssn|social[_-]?security|credit[_-]?card|card[_-]?number|cvv|cvc|iban|routing[_-]?number|session[_-]?id|cookie)$/i;
+  /^(?:password|passwd|pwd|pass[_-]?hash|password[_-]?hash|password[_-]?salt|salt|secret|client[_-]?secret|shared[_-]?secret|api[_-]?key|access[_-]?token|refresh[_-]?token|auth[_-]?token|bearer|id[_-]?token|private[_-]?key|ssh[_-]?key|encryption[_-]?key|mfa[_-]?secret|totp[_-]?secret|otp[_-]?secret|ssn|social[_-]?security|national[_-]?id|national[_-]?code|passport|passport[_-]?number|driver[_-]?license|credit[_-]?card|card[_-]?number|pan|cvv|cvc|iban|routing[_-]?number|account[_-]?number|bank[_-]?account|session[_-]?id|session[_-]?token|cookie|connection[_-]?string)$/i;
 
 function assertNoSensitiveProjection(sql: string): void {
   // Strip string literals so values like 'password' in WHERE don't trip the check.

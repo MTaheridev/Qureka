@@ -14,7 +14,8 @@ import { ENGINE_LABELS, ENGINE_PORTS, formatCount, formatWhen, statusLabel } fro
 import { useProgressFeed } from '@/lib/hooks';
 import { useSettings } from '@/lib/settings';
 import { ReadOnlyChecks, ReadOnlyPill } from './ReadOnlyChecks';
-import { Badge, BusyLine, EmptyState, ErrorBanner, Icon, Notice, Spinner } from './ui';
+import { ThinkingIndicator } from './ThinkingIndicator';
+import { Badge, EmptyState, ErrorBanner, Icon, Notice, Spinner } from './ui';
 
 const ENGINES: EngineId[] = ['postgres', 'mysql', 'mssql', 'sqlite'];
 const WIZARD = ['Basics', 'Database', 'Connect'];
@@ -220,9 +221,9 @@ export function ConnectionsView({
           {createError ? <ErrorBanner message={createError} /> : null}
           {createReport ? <ReadOnlyChecks report={createReport} /> : null}
           {creating ? (
-            <BusyLine
-              message="Checking your database"
-              detail={progress?.message ?? 'Proving credentials cannot write'}
+            <ThinkingIndicator
+              mode="analyzing"
+              detail={progress?.message ?? null}
             />
           ) : null}
 

@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { app } from 'electron';
 
+// Keep legacy filename so existing local DBs keep working after the product rename.
 export const DATABASE_FILE_NAME = 'easy-reporter.db';
 
 /**

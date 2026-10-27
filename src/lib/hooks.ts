@@ -5,7 +5,7 @@ export function useProgressFeed(): ProgressEvent | null {
   const [event, setEvent] = useState<ProgressEvent | null>(null);
 
   useEffect(() => {
-    const bridge = window.easyReporter;
+    const bridge = window.qureka;
     if (!bridge) return;
     return bridge.onProgress(setEvent);
   }, []);

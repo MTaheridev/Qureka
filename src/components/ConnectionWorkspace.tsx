@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ConnectionView, SchemaSummary } from '../../shared/ipc';
 import { errorMessage, getApi } from '@/lib/api';
 import {
@@ -15,11 +15,22 @@ import { KnowledgePanel } from './KnowledgePanel';
 import { ReadOnlyChecks, ReadOnlyPill } from './ReadOnlyChecks';
 import { SetupPanel } from './SetupPanel';
 import { useSettings } from '@/lib/settings';
+import { ThinkingIndicator } from './ThinkingIndicator';
 import { Badge, BusyLine, EmptyState, ErrorBanner, Icon, Notice, Spinner } from './ui';
 
 type Tab = 'overview' | 'setup' | 'knowledge' | 'chat';
 
-export function ConnectionWorkspace({ id, onBack }: { id: string; onBack: () => void }) {
+export function ConnectionWorkspace({
+  id,
+  onBack,
+  onChanged,
+  onReadyToChat,
+}: {
+  id: string;
+  onBack: () => void;
+  onChanged?: () => void | Promise<void>;
+  onReadyToChat?: () => void;
+}) {
   const { tr } = useSettings();
   const TABS: { id: Tab; label: string }[] = [
     { id: 'overview', label: tr('tabOverview') },
@@ -31,10 +42,14 @@ export function ConnectionWorkspace({ id, onBack }: { id: string; onBack: () => 
   const [summary, setSummary] = useState<SchemaSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>('overview');
+  const [tab, setTab] = useState<Tab>('setup');
   const [action, setAction] = useState<'reprobe' | 'refresh' | 'export' | 'delete' | null>(null);
   const [toast, setToast] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
   const progress = useProgressFeed();
+  const onChangedRef = useRef(onChanged);
+  const onReadyRef = useRef(onReadyToChat);
+  onChangedRef.current = onChanged;
+  onReadyRef.current = onReadyToChat;
 
   const load = useCallback(async () => {
     try {
@@ -45,8 +60,11 @@ export function ConnectionWorkspace({ id, onBack }: { id: string; onBack: () => 
       setConnection(connectionRow);
       setSummary(schemaRow);
       setError(null);
+      await onChangedRef.current?.();
+      return connectionRow;
     } catch (loadError) {
       setError(errorMessage(loadError));
+      return null;
     } finally {
       setLoading(false);
     }
@@ -54,8 +72,13 @@ export function ConnectionWorkspace({ id, onBack }: { id: string; onBack: () => 
 
   useEffect(() => {
     setLoading(true);
-    setTab('overview');
-    void load();
+    void (async () => {
+      const row = await load();
+      if (!row) return;
+      if (row.status === 'ready' && row.readOnly?.verdict === 'read-only') setTab('chat');
+      else if (row.status === 'failed') setTab('overview');
+      else setTab('setup');
+    })();
   }, [load]);
 
   async function reprobe() {
@@ -210,16 +233,12 @@ export function ConnectionWorkspace({ id, onBack }: { id: string; onBack: () => 
 
       {connection.statusDetail ? <ErrorBanner message={connection.statusDetail} /> : null}
       {error ? <ErrorBanner message={error} /> : null}
-      {action ? (
+      {action === 'reprobe' || action === 'refresh' ? (
+        <ThinkingIndicator mode="analyzing" detail={progress?.message ?? null} />
+      ) : action ? (
         <BusyLine
           message={
-            action === 'reprobe'
-              ? 'Verifying read-only access'
-              : action === 'refresh'
-                ? 'Reading the schema again'
-                : action === 'export'
-                  ? 'Exporting the schema'
-                  : 'Deleting the connection'
+            action === 'export' ? 'Exporting the schema' : 'Deleting the connection'
           }
           detail={progress?.message ?? null}
         />
@@ -232,7 +251,12 @@ export function ConnectionWorkspace({ id, onBack }: { id: string; onBack: () => 
             key={item.id}
             type="button"
             className={tab === item.id ? 'tab active' : 'tab'}
-            onClick={() => setTab(item.id)}
+            onClick={() => {
+              if (tab === 'chat' && item.id !== 'chat') {
+                void getApi().chat.flushLearning(id).catch(() => undefined);
+              }
+              setTab(item.id);
+            }}
           >
             {item.label}
             {item.id === 'chat' && !readOnly ? <Icon name="lock" size={12} /> : null}
@@ -395,8 +419,17 @@ export function ConnectionWorkspace({ id, onBack }: { id: string; onBack: () => 
       {tab === 'setup' ? (
         <SetupPanel
           connection={connection}
-          onChanged={load}
+          onChanged={async () => {
+            const row = await load();
+            if (row?.status === 'ready' && row.readOnly?.verdict === 'read-only') {
+              onReadyRef.current?.();
+            }
+          }}
           onOpenKnowledge={() => setTab('knowledge')}
+          onOpenChat={() => {
+            setTab('chat');
+            onReadyRef.current?.();
+          }}
         />
       ) : null}
 
@@ -404,11 +437,16 @@ export function ConnectionWorkspace({ id, onBack }: { id: string; onBack: () => 
         <KnowledgePanel
           connection={connection}
           onSetup={() => setTab('setup')}
-          onChat={() => setTab('chat')}
+          onChat={() => {
+            setTab('chat');
+            onReadyRef.current?.();
+          }}
         />
       ) : null}
 
-      {tab === 'chat' ? <ChatPanel connection={connection} onSetup={() => setTab('setup')} /> : null}
+      {tab === 'chat' ? (
+        <ChatPanel connection={connection} onSetup={() => setTab('setup')} />
+      ) : null}
     </div>
   );
 }

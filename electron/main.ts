@@ -4,12 +4,12 @@ import { registerIpcHandlers } from './ipc/register';
 import { disconnectPrisma } from './db/client';
 import { runMigrations } from './db/migrate';
 
-const DEV_SERVER_URL = process.env.EASYREPORTER_DEV_URL ?? 'http://localhost:3000/';
-const isDev = process.env.EASYREPORTER_DEV === '1';
+const DEV_SERVER_URL = process.env.QUREKA_DEV_URL ?? process.env.EASYREPORTER_DEV_URL ?? 'http://localhost:3000/';
+const isDev = process.env.QUREKA_DEV === '1' || process.env.EASYREPORTER_DEV === '1';
 
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
-    title: 'EasyReporter',
+    title: 'Qureka',
     width: 1280,
     height: 800,
     minWidth: 900,
@@ -67,7 +67,7 @@ if (!singleInstanceLock) {
 
   app.whenReady().then(async () => {
     app.setAboutPanelOptions({
-      applicationName: 'EasyReporter',
+      applicationName: 'Qureka',
       applicationVersion: app.getVersion(),
       authors: ['Mohammad Taheri'],
       website: 'https://taheri.vercel.app',
@@ -77,7 +77,7 @@ if (!singleInstanceLock) {
       await runMigrations();
     } catch (error) {
       dialog.showErrorBox(
-        'EasyReporter could not start',
+        'Qureka could not start',
         `The local database could not be prepared.\n\n${error instanceof Error ? error.message : String(error)}`,
       );
       app.quit();

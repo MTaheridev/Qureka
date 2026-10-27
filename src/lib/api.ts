@@ -1,9 +1,9 @@
-import type { EasyReporterApi } from '../../shared/ipc';
+import type { QurekaApi } from '../../shared/ipc';
 
-export function getApi(): EasyReporterApi {
-  const bridge = window.easyReporter;
+export function getApi(): QurekaApi {
+  const bridge = window.qureka;
   if (!bridge) {
-    throw new Error('The desktop bridge is unavailable. Open EasyReporter through the desktop app.');
+    throw new Error('The desktop bridge is unavailable. Open Qureka through the desktop app.');
   }
   return bridge;
 }

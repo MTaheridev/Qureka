@@ -38,6 +38,7 @@ model DbConnection {
   statusDetail   String?
   readOnlyReport String? // JSON evidence from the probe
   schemaJson     String? // cached introspection snapshot
+  businessBrief  String? // user plain-language description of the database
   aiModelId      String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -49,14 +50,16 @@ model DbConnection {
 }
 
 model KnowledgeBase {
-  id           String   @id @default(cuid())
-  connectionId String   @unique
-  summary      String
-  content      String // markdown knowledge base
-  tablesJson   String // per-table notes and business meaning
-  glossaryJson String // term -> definition / SQL hint
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id               String    @id @default(cuid())
+  connectionId     String    @unique
+  summary          String
+  content          String // markdown knowledge base
+  tablesJson       String // per-table notes and business meaning
+  glossaryJson     String // term -> definition / SQL hint
+  memoryJson       String? // durable insights learned from chats
+  memoryUpdatedAt  DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   connection DbConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
 }
@@ -65,7 +68,8 @@ model OnboardingQuestion {
   id           String   @id @default(cuid())
   connectionId String
   position     Int
-  prompt       String
+  prompt       String // English
+  promptFa     String  @default("") // Persian; empty for legacy rows until regenerated
   answer       String?
   skipped      Boolean  @default(false)
   createdAt    DateTime @default(now())

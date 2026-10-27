@@ -5,7 +5,8 @@
 
 ---
 
-**Project:** EasyReporter  
+**Project:** Qureka  
+**Slogan:** Data Speaks. We Listen.  
 **Updated:** 2026-10-27  
 **Category:** Desktop AI reporting tool  
 
@@ -40,7 +41,7 @@ Light mode keeps `--primary` / `--accent` / `--accent-2` identical; text/muted t
 ## Typography
 
 - **English:** Google Sans / Google Sans Text (`--font-body`, local in `public/fonts/`)
-- **Persian:** Vazirmatn (`--font-fa`); `zoom: 0.8` when `data-lang=fa`
+- **Persian:** Vazirmatn (`--font-fa`) when `data-lang=fa` (same scale as English; no zoom shrink)
 - **Mono:** JetBrains Mono (`--font-mono`)
 
 ## Motion
@@ -58,10 +59,16 @@ No gradient aurora backdrop. Respect `prefers-reduced-motion`.
 1. **No side nav** — brand + project bubble + settings gear only
 2. Project bubble → searchable modal; gear → settings bubbles
 3. Model picker in chat composer; chat column max-width 3xl, borderless, no chat toolbar
-4. New project uses a **3-step wizard**
+4. New project uses a **3-step wizard**, then Setup workspace (questions → knowledge → chat)
 5. Empty states + one primary CTA; suggestion chips in chat
 6. No manual SQL setting
 7. Visible focus rings; `cursor: pointer` on controls
+8. Non-ready projects always open Setup (never skip onboarding)
+9. Long waits use `ThinkingIndicator` (rotating phrases + animated dots): chat = thinking, DB create = analyzing
+10. Setup starts with an optional business-brief textarea before generating questions; brief is stored on the connection and fed into question + knowledge prompts
+11. Onboarding questions are bilingual (EN + FA) with a segmented language toggle while answering
+12. Chat AI language follows the user message (EN/FA), not the UI language setting
+13. Project knowledge learns from chats (flush on leave / idle); show memory meta on the knowledge panel
 
 ## Avoid
 

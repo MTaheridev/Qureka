@@ -4,12 +4,12 @@ import type {
   AiModelInput,
   AppSettingsPatch,
   ConnectionInput,
-  EasyReporterApi,
+  QurekaApi,
   ExportFormat,
   ProgressEvent,
 } from '../shared/ipc';
 
-const api: EasyReporterApi = {
+const api: QurekaApi = {
   getAppInfo: () => ipcRenderer.invoke(IPC_CHANNELS.appGetInfo),
   getDbStatus: () => ipcRenderer.invoke(IPC_CHANNELS.dbGetStatus),
   getSettings: () => ipcRenderer.invoke(IPC_CHANNELS.settingsGet),
@@ -32,6 +32,8 @@ const api: EasyReporterApi = {
     remove: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.connectionsDelete, id),
     setAiModel: (id: string, aiModelId: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.connectionsSetAiModel, id, aiModelId),
+    setBusinessBrief: (id: string, brief: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.connectionsSetBusinessBrief, id, brief),
     reprobe: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.connectionsReprobe, id),
     refresh: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.connectionsRefresh, id),
     schema: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.connectionsSchema, id),
@@ -66,6 +68,8 @@ const api: EasyReporterApi = {
     runSql: (conversationId: string, sql: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.chatRunSql, conversationId, sql),
     clear: (conversationId: string) => ipcRenderer.invoke(IPC_CHANNELS.chatClear, conversationId),
+    flushLearning: (connectionId: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.chatFlushLearning, connectionId),
   },
 
   exports: {
@@ -82,4 +86,4 @@ const api: EasyReporterApi = {
   },
 };
 
-contextBridge.exposeInMainWorld('easyReporter', api);
+contextBridge.exposeInMainWorld('qureka', api);

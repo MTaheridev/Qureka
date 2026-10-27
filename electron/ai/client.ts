@@ -23,6 +23,8 @@ interface CompleteOptions {
   maxTokens?: number;
   temperature?: number;
   timeoutMs?: number;
+  /** Prefer provider JSON mode when available (OpenAI-compatible). */
+  json?: boolean;
 }
 
 function endpoint(config: AiConfig): string {
@@ -125,7 +127,7 @@ export async function complete(
     // OpenRouter ranks apps that identify themselves; harmless for other OpenAI-compatible hosts.
     if (/openrouter\.ai/i.test(config.baseUrl)) {
       headers['HTTP-Referer'] = 'https://taheri.vercel.app';
-      headers['X-Title'] = 'EasyReporter';
+      headers['X-Title'] = 'Qureka';
     }
     // Prefer the paid/standard route over the shared `:free` pool (often 429 rate-limited).
     const model = /openrouter\.ai/i.test(config.baseUrl)
@@ -136,6 +138,7 @@ export async function complete(
       max_tokens: maxTokens,
       temperature,
       messages,
+      ...(options.json ? { response_format: { type: 'json_object' } } : {}),
     };
   }
 
@@ -155,7 +158,15 @@ export async function complete(
   }
 
   if (!response.ok) {
-    throw new AiRequestError(await readError(response), response.status);
+    const message = await readError(response);
+    const jsonModeRejected =
+      Boolean(options.json) &&
+      config.protocol !== 'anthropic' &&
+      /response_format|json_object|json mode/i.test(message);
+    if (jsonModeRejected) {
+      return complete(config, messages, { ...options, json: false });
+    }
+    throw new AiRequestError(message, response.status);
   }
 
   const payload = (await response.json().catch(() => null)) as Record<string, unknown> | null;

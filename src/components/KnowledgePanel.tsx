@@ -92,7 +92,16 @@ export function KnowledgePanel({
         <div className="knowledge-meta muted small">
           <span>updated {formatWhen(knowledge.updatedAt)}</span>
           <span>{knowledge.glossary.length} glossary terms</span>
+          {knowledge.memoryUpdatedAt ? (
+            <span>from chats {formatWhen(knowledge.memoryUpdatedAt)}</span>
+          ) : null}
         </div>
+        {knowledge.memory ? (
+          <details className="knowledge-memory">
+            <summary>Project memory (from chats)</summary>
+            <pre className="knowledge-memory-body">{knowledge.memory}</pre>
+          </details>
+        ) : null}
         <div className="markdown">
           <ReactMarkdown>{knowledge.content}</ReactMarkdown>
         </div>

@@ -11,9 +11,24 @@ import type {
 import { getPrisma } from '../db/client';
 import { createEngineAdapter } from '../engines/factory';
 import { LIMITS } from '../engines/constants';
+import { enrichSchemaRelations } from '../engines/relation-infer';
 import type { EngineAdapter, StoredConnection } from '../engines/types';
 import { describeTarget } from '../engines/values';
 import { decryptSecret, encryptSecret } from './secrets';
+
+function finalizeSnapshot(
+  engine: EngineId,
+  raw: Awaited<ReturnType<EngineAdapter['introspect']>>,
+): SchemaSnapshot {
+  const enriched = enrichSchemaRelations(raw);
+  return {
+    engine,
+    fetchedAt: new Date().toISOString(),
+    tables: enriched.tables,
+    truncated: enriched.truncated,
+    relations: enriched.relations ?? [],
+  };
+}
 
 const ENGINES: EngineId[] = ['postgres', 'mysql', 'mssql', 'sqlite'];
 const DEFAULT_PORTS: Record<EngineId, number> = {
@@ -38,6 +53,7 @@ type ConnectionRow = {
   statusDetail: string | null;
   readOnlyReport: string | null;
   schemaJson: string | null;
+  businessBrief: string | null;
   aiModelId: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -64,7 +80,18 @@ function parseReport(value: string | null): ReadOnlyReport | null {
 export function parseSnapshot(value: string | null): SchemaSnapshot | null {
   if (!value) return null;
   try {
-    return JSON.parse(value) as SchemaSnapshot;
+    const parsed = JSON.parse(value) as SchemaSnapshot;
+    if (!parsed || !Array.isArray(parsed.tables)) return null;
+    if (parsed.relations && parsed.relations.length > 0) return parsed;
+    const enriched = enrichSchemaRelations({
+      tables: parsed.tables,
+      truncated: Boolean(parsed.truncated),
+    });
+    return {
+      ...parsed,
+      tables: enriched.tables,
+      relations: enriched.relations ?? [],
+    };
   } catch {
     return null;
   }
@@ -98,6 +125,7 @@ function toView(row: ConnectionRow): ConnectionView {
     readOnly: parseReport(row.readOnlyReport),
     tableCount: snapshot ? snapshot.tables.length : null,
     hasKnowledge: Boolean(row.knowledge),
+    businessBrief: row.businessBrief ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -256,7 +284,7 @@ export async function createConnection(
     return {
       ok: false,
       error:
-        'These credentials can modify the database. EasyReporter only accepts connections that cannot write, so create a read-only user and try again.',
+        'These credentials can modify the database. Qureka only accepts connections that cannot write, so create a read-only user and try again.',
       report,
     };
   }
@@ -282,7 +310,7 @@ export async function createConnection(
   onProgress?.('Reading tables, columns and sample rows');
   const adapter = createEngineAdapter({ ...stored, id: row.id });
   try {
-    const snapshot = await adapter.introspect(
+    const raw = await adapter.introspect(
       {
         maxTables: LIMITS.maxTables,
         sampleRows: LIMITS.sampleRows,
@@ -290,10 +318,11 @@ export async function createConnection(
       },
       onProgress,
     );
+    const snapshot = finalizeSnapshot(normalized.engine, raw);
     const updated = await prisma.dbConnection.update({
       where: { id: row.id },
       data: {
-        schemaJson: JSON.stringify({ ...snapshot, engine: normalized.engine, fetchedAt: new Date().toISOString() }),
+        schemaJson: JSON.stringify(snapshot),
         statusDetail: null,
       },
       include: includeRelations,
@@ -324,6 +353,20 @@ export async function setConnectionAiModel(
   const row = await prisma.dbConnection.update({
     where: { id },
     data: { aiModelId: modelId },
+    include: includeRelations,
+  });
+  return toView(row);
+}
+
+export async function setConnectionBusinessBrief(
+  id: string,
+  brief: string,
+): Promise<ConnectionView> {
+  const prisma = getPrisma();
+  const trimmed = String(brief ?? '').trim().slice(0, 8_000);
+  const row = await prisma.dbConnection.update({
+    where: { id },
+    data: { businessBrief: trimmed.length > 0 ? trimmed : null },
     include: includeRelations,
   });
   return toView(row);
@@ -373,7 +416,7 @@ export async function reprobeConnection(id: string): Promise<ReadOnlyReport> {
       statusDetail:
         report.verdict === 'read-only'
           ? null
-          : 'These credentials can modify the database. EasyReporter blocked this connection.',
+          : 'These credentials can modify the database. Qureka blocked this connection.',
     },
   });
 
@@ -420,7 +463,7 @@ export async function refreshSchema(
   requireReadOnly(context);
   const adapter = createEngineAdapter(context.stored);
   try {
-    const snapshot = await adapter.introspect(
+    const raw = await adapter.introspect(
       {
         maxTables: LIMITS.maxTables,
         sampleRows: LIMITS.sampleRows,
@@ -428,11 +471,7 @@ export async function refreshSchema(
       },
       onProgress,
     );
-    const full: SchemaSnapshot = {
-      ...snapshot,
-      engine: context.stored.engine,
-      fetchedAt: new Date().toISOString(),
-    };
+    const full = finalizeSnapshot(context.stored.engine, raw);
     const prisma = getPrisma();
     await prisma.dbConnection.update({
       where: { id },

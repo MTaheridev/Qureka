@@ -1,9 +1,9 @@
 {
-  "name": "easy-reporter",
-  "productName": "EasyReporter",
-  "version": "0.0.1",
+  "name": "qureka",
+  "productName": "Qureka",
+  "version": "0.1.1",
   "private": true,
-  "description": "EasyReporter — a desktop reporting application built with Next.js, Electron and Prisma.",
+  "description": "Qureka — a desktop reporting application built with Next.js, Electron and Prisma.",
   "author": {
     "name": "Mohammad Taheri",
     "url": "https://taheri.vercel.app"
@@ -11,14 +11,14 @@
   "homepage": "https://taheri.vercel.app",
   "repository": {
     "type": "git",
-    "url": "https://github.com/mohammadtaheri/easy-reporter.git"
+    "url": "https://github.com/MTaheridev/Qureka.git"
   },
   "license": "UNLICENSED",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "concurrently -k -n next,electron -c cyan,magenta \"npm:dev:next\" \"npm:dev:electron\"",
     "dev:next": "next dev -p 3000",
-    "dev:electron": "npm run build:electron && wait-on tcp:127.0.0.1:3000 && cross-env EASYREPORTER_DEV=1 ELECTRON_OZONE_PLATFORM_HINT=x11 electron . --no-sandbox --ozone-platform=x11",
+    "dev:electron": "npm run build:electron && wait-on tcp:127.0.0.1:3000 && cross-env QUREKA_DEV=1 ELECTRON_OZONE_PLATFORM_HINT=x11 electron . --no-sandbox --ozone-platform=x11",
     "build": "npm run build:next && npm run build:electron",
     "build:next": "next build",
     "build:electron": "esbuild electron/main.ts electron/preload.ts --bundle --platform=node --format=cjs --packages=external --outdir=dist-electron",
@@ -30,6 +30,7 @@
     "db:studio": "prisma studio",
     "dist": "npm run build && electron-builder",
     "dist:linux": "npm run build && electron-builder --linux",
+    "dist:deb": "npm run build && electron-builder --linux deb --x64",
     "dist:win": "npm run build && electron-builder --win"
   },
   "dependencies": {
@@ -65,9 +66,8 @@
     "wait-on": "^9.5.1"
   },
   "build": {
-    "appId": "app.taheri.easyreporter",
-    "productName": "EasyReporter",
-    "desktopName": "app.taheri.easyreporter",
+    "appId": "app.taheri.qureka",
+    "productName": "Qureka",
     "copyright": "Copyright © 2026 Mohammad Taheri",
     "directories": {
       "output": "release"
@@ -103,7 +103,7 @@
       "category": "Office",
       "maintainer": "Mohammad Taheri <https://taheri.vercel.app>",
       "synopsis": "Desktop reporting application",
-      "executableName": "easy-reporter",
+      "executableName": "qureka",
       "syncDesktopName": true
     },
     "win": {

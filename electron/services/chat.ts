@@ -16,12 +16,16 @@ import {
   sqlResponseSchema,
   type HistoryMessage,
 } from '../ai/prompts';
+import { detectLanguage } from '../ai/detect-language';
 import { schemaToText } from '../ai/schema-text';
 import { assertReadOnlySql } from '../engines/sql-guard';
 import { resolveAiConfig } from './ai-models';
 import { loadConnectionContext } from './connections';
+import {
+  bufferLearningTurn,
+  formatProjectMemory,
+} from './knowledge-learn';
 import { captureRun, readRunRows, removeRunFile, toRunView, type CapturedRun } from './runs';
-import { getSettings } from './settings';
 
 const DEFAULT_TITLE = 'New chat';
 
@@ -320,6 +324,7 @@ async function generateAndRun(input: {
   schemaText: string;
   knowledge: string | null;
   glossary: string | null;
+  projectMemory: string | null;
   history: HistoryMessage[];
   question: string;
   config: AiConfig;
@@ -347,6 +352,7 @@ async function generateAndRun(input: {
             schemaText: input.schemaText,
             knowledge: input.knowledge,
             glossary: input.glossary,
+            projectMemory: input.projectMemory,
             history: input.history,
             question: input.question,
             language: input.language,
@@ -438,7 +444,7 @@ export async function ask(
   }
 
   const config = await resolveAiConfig(context.row.aiModelId);
-  const language = getSettings().language;
+  const language = detectLanguage(question);
 
   const userMessage = await prisma.message.create({
     data: { conversationId: conversation.id, role: 'user', content: question },
@@ -464,6 +470,7 @@ export async function ask(
     const glossary = knowledgeRow.glossaryJson
       ? summarizeGlossary(knowledgeRow.glossaryJson)
       : null;
+    const projectMemory = formatProjectMemory(knowledgeRow.memoryJson);
 
     const result = await generateAndRun({
       connectionId,
@@ -471,6 +478,7 @@ export async function ask(
       schemaText,
       knowledge: [knowledgeRow.summary, knowledgeRow.content].filter(Boolean).join('\n\n').slice(0, 25_000),
       glossary,
+      projectMemory,
       history,
       question,
       config,
@@ -486,14 +494,22 @@ export async function ask(
         explanation: result.title ?? null,
         error: null,
       });
+      bufferLearningTurn(connectionId, { role: 'user', content: question });
+      bufferLearningTurn(connectionId, { role: 'assistant', content: result.answer });
     } else {
+      const assistantContent = buildContent(result.explanation, result.captured, language);
       await saveAssistantMessage({
         conversationId: conversation.id,
-        content: buildContent(result.explanation, result.captured, language),
+        content: assistantContent,
         sql: result.sql,
         explanation: result.explanation,
         error: null,
         captured: result.captured,
+      });
+      bufferLearningTurn(connectionId, { role: 'user', content: question });
+      bufferLearningTurn(connectionId, {
+        role: 'assistant',
+        content: [result.explanation, assistantContent].filter(Boolean).join('\n'),
       });
     }
   } catch (error) {

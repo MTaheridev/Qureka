@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { AiModelView, AppInfo, ConnectionView, DbStatus } from '../../shared/ipc';
 import { ChatPanel } from '@/components/ChatPanel';
+import { ConnectionWorkspace } from '@/components/ConnectionWorkspace';
 import { ConnectionsView } from '@/components/ConnectionsView';
 import { ModelsView } from '@/components/ModelsView';
 import { Icon, Spinner } from '@/components/ui';
 import { errorMessage, getApi } from '@/lib/api';
 import { useSettings } from '@/lib/settings';
 
-type Panel = 'agent' | 'projects' | 'models';
+type Panel = 'agent' | 'projects' | 'models' | 'setup';
 
 export function AgentShell() {
   const { tr, theme, language, update } = useSettings();
@@ -66,7 +67,7 @@ export function AgentShell() {
     const timer = window.setTimeout(() => {
       void (async () => {
         try {
-          if (!window.easyReporter) {
+          if (!window.qureka) {
             if (!cancelled) setBridgeMissing(true);
             return;
           }
@@ -74,7 +75,7 @@ export function AgentShell() {
           if (!cancelled) setBootError(null);
         } catch (error) {
           if (!cancelled) {
-            if (!window.easyReporter) setBridgeMissing(true);
+            if (!window.qureka) setBridgeMissing(true);
             else setBootError(errorMessage(error));
           }
         } finally {
@@ -107,7 +108,7 @@ export function AgentShell() {
           <span className="empty-icon">
             <Icon name="database" size={26} />
           </span>
-          <h1>Open EasyReporter as a desktop app</h1>
+          <h1>Open Qureka as a desktop app</h1>
           <p>
             This page is running in a browser without the desktop bridge. Start it with{' '}
             <code>npm run dev</code> or open the installed app.
@@ -138,6 +139,29 @@ export function AgentShell() {
     setProjectModalOpen(false);
   }
 
+  function openSetup(projectId?: string) {
+    const id = projectId ?? activeProjectId;
+    if (!id) {
+      openProjects();
+      return;
+    }
+    setActiveProjectId(id);
+    setPanel('setup');
+    setSettingsOpen(false);
+    setProjectModalOpen(false);
+    setProjectQuery('');
+  }
+
+  function openProject(id: string) {
+    setActiveProjectId(id);
+    setProjectModalOpen(false);
+    setProjectQuery('');
+    setSettingsOpen(false);
+    const project = projects.find((row) => row.id === id);
+    const ready = project?.status === 'ready' && project.readOnly?.verdict === 'read-only';
+    setPanel(ready ? 'agent' : 'setup');
+  }
+
   async function toggleTheme() {
     await update({ theme: theme === 'dark' ? 'light' : 'dark' });
   }
@@ -147,11 +171,7 @@ export function AgentShell() {
   }
 
   async function selectProject(id: string) {
-    setActiveProjectId(id);
-    setProjectModalOpen(false);
-    setProjectQuery('');
-    setPanel('agent');
-    setSettingsOpen(false);
+    openProject(id);
   }
 
   async function changeModel(modelId: string) {
@@ -172,7 +192,7 @@ export function AgentShell() {
             <Icon name="sparkle" size={22} />
           </span>
           <span className="agent-brand-copy">
-            <strong>Easy Reporter</strong>
+            <strong>Qureka</strong>
             <span>{tr('agentTagline')}</span>
           </span>
         </button>
@@ -261,12 +281,24 @@ export function AgentShell() {
           ) : panel === 'projects' ? (
             <div className="stage-scroll">
               <ConnectionsView
-                onOpen={(id) => {
-                  setActiveProjectId(id);
-                  goHome();
-                }}
+                onOpen={(id) => openProject(id)}
                 onModels={openModels}
                 onChanged={() => void refresh()}
+              />
+            </div>
+          ) : panel === 'setup' && activeProjectId ? (
+            <div className="stage-scroll">
+              <ConnectionWorkspace
+                key={activeProjectId}
+                id={activeProjectId}
+                onBack={openProjects}
+                onChanged={() => refresh()}
+                onReadyToChat={() => {
+                  void refresh().then(() => {
+                    setPanel('agent');
+                    setSettingsOpen(false);
+                  });
+                }}
               />
             </div>
           ) : readyToChat && activeProject ? (
@@ -274,7 +306,7 @@ export function AgentShell() {
               <ChatPanel
                 key={activeProject.id}
                 connection={activeProject}
-                onSetup={openProjects}
+                onSetup={() => openSetup(activeProject.id)}
                 models={models}
                 activeModel={activeModel}
                 onSelectModel={(id) => void changeModel(id)}
@@ -295,6 +327,8 @@ export function AgentShell() {
               }
               onAction={() => {
                 if (!models.length) openModels();
+                else if (!projects.length) openProjects();
+                else if (activeProject && !readyToChat) openSetup(activeProject.id);
                 else openProjects();
               }}
               actionLabel={
@@ -302,7 +336,9 @@ export function AgentShell() {
                   ? tr('addBrain')
                   : !projects.length
                     ? tr('createFirstProject')
-                    : tr('manageProjects')
+                    : activeProject && !readyToChat
+                      ? tr('goSetup')
+                      : tr('manageProjects')
               }
             />
           )}

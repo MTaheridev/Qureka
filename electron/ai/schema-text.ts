@@ -1,4 +1,4 @@
-import type { EngineId, SchemaSnapshot } from '../../shared/ipc';
+import type { EngineId, RelationEdge, SchemaSnapshot } from '../../shared/ipc';
 
 const ENGINE_LABELS: Record<EngineId, string> = {
   postgres: 'PostgreSQL',
@@ -16,6 +16,39 @@ interface SchemaTextOptions {
   includeSamples?: boolean;
 }
 
+function qualify(schema: string | undefined, name: string): string {
+  if (schema && schema !== 'main' && schema.length > 0) return `${schema}.${name}`;
+  return name;
+}
+
+function formatRelation(edge: RelationEdge): string {
+  const from = `${qualify(edge.fromSchema, edge.fromTable)}.${edge.fromColumn}`;
+  const to = `${qualify(edge.toSchema, edge.toTable)}.${edge.toColumn}`;
+  const tag = edge.kind === 'inferred' ? 'INFERRED' : 'FK';
+  return `  - [${tag}] ${from} -> ${to}`;
+}
+
+function collectRelations(snapshot: SchemaSnapshot): RelationEdge[] {
+  if (snapshot.relations && snapshot.relations.length > 0) return snapshot.relations;
+
+  const edges: RelationEdge[] = [];
+  for (const table of snapshot.tables) {
+    for (const column of table.columns) {
+      if (!column.references) continue;
+      edges.push({
+        fromSchema: table.schema,
+        fromTable: table.name,
+        fromColumn: column.name,
+        toSchema: column.references.schema,
+        toTable: column.references.table,
+        toColumn: column.references.column,
+        kind: column.references.kind ?? 'fk',
+      });
+    }
+  }
+  return edges;
+}
+
 export function schemaToText(
   engine: EngineId,
   snapshot: SchemaSnapshot,
@@ -27,18 +60,39 @@ export function schemaToText(
 
   lines.push(`Engine: ${engineLabel(engine)}`);
   lines.push(`Tables: ${snapshot.tables.length}${snapshot.truncated ? ' (list truncated)' : ''}`);
+  lines.push('Review every table below. Prefer declared FK relations; treat INFERRED joins as assumptions to confirm.');
+
+  const relations = collectRelations(snapshot);
+  if (relations.length > 0) {
+    lines.push('');
+    lines.push('RELATIONS');
+    const declared = relations.filter((edge) => edge.kind === 'fk');
+    const inferred = relations.filter((edge) => edge.kind === 'inferred');
+    for (const edge of declared) lines.push(formatRelation(edge));
+    for (const edge of inferred) lines.push(formatRelation(edge));
+  }
 
   for (const table of snapshot.tables) {
-    const qualified = table.schema && table.schema !== 'main' ? `${table.schema}.${table.name}` : table.name;
+    const qualified = qualify(table.schema, table.name);
     const rows = table.rowCount === null ? 'unknown rows' : `~${table.rowCount} rows`;
     lines.push('');
     lines.push(`TABLE ${qualified} (${rows})`);
 
     for (const column of table.columns) {
+      const ref = column.references;
+      const fkFlag =
+        ref && (ref.kind ?? 'fk') === 'fk'
+          ? `FK -> ${qualify(ref.schema, ref.table)}.${ref.column}`
+          : null;
+      const inferredFlag =
+        ref && ref.kind === 'inferred'
+          ? `INFERRED -> ${qualify(ref.schema, ref.table)}.${ref.column}`
+          : null;
       const flags = [
         column.primaryKey ? 'PK' : null,
         column.nullable ? null : 'NOT NULL',
-        column.references ? `FK -> ${column.references.table}.${column.references.column}` : null,
+        fkFlag,
+        inferredFlag,
       ].filter((value): value is string => value !== null);
       lines.push(`  - ${column.name} ${column.dataType}${flags.length > 0 ? ` [${flags.join(', ')}]` : ''}`);
     }

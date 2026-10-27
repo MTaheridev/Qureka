@@ -27,7 +27,7 @@ const persian = Vazirmatn({
 });
 
 export const metadata: Metadata = {
-  title: 'EasyReporter',
+  title: 'Qureka',
   description: 'Ask plain-language questions about your databases — safely, read-only.',
   authors: [{ name: 'Mohammad Taheri', url: 'https://taheri.vercel.app' }],
 };

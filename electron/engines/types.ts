@@ -12,12 +12,21 @@ export interface StoredConnection {
   ssl: boolean;
 }
 
+export type RelationKind = 'fk' | 'inferred';
+
+export interface RawColumnReference {
+  table: string;
+  column: string;
+  schema?: string;
+  kind?: RelationKind;
+}
+
 export interface RawColumn {
   name: string;
   dataType: string;
   nullable: boolean;
   primaryKey: boolean;
-  references: { table: string; column: string } | null;
+  references: RawColumnReference | null;
 }
 
 export interface RawTable {
@@ -29,9 +38,20 @@ export interface RawTable {
   sampleRows: CellValue[][];
 }
 
+export interface RawRelationEdge {
+  fromSchema: string;
+  fromTable: string;
+  fromColumn: string;
+  toSchema?: string;
+  toTable: string;
+  toColumn: string;
+  kind: RelationKind;
+}
+
 export interface RawSchema {
   tables: RawTable[];
   truncated: boolean;
+  relations?: RawRelationEdge[];
 }
 
 export interface RunOptions {

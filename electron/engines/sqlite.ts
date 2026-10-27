@@ -79,7 +79,7 @@ export class SqliteAdapter implements EngineAdapter {
         label: 'Query-only mode enforced',
         ok: enabled,
         detail: enabled
-          ? 'SQLite runs with PRAGMA query_only = ON, so every write attempted through EasyReporter is rejected by the engine.'
+          ? 'SQLite runs with PRAGMA query_only = ON, so every write attempted through Qureka is rejected by the engine.'
           : 'SQLite did not accept PRAGMA query_only = ON.',
       });
     } catch (error) {
@@ -101,7 +101,7 @@ export class SqliteAdapter implements EngineAdapter {
       label: 'File permissions',
       ok: true,
       detail: fileWritable
-        ? 'The file is writable by this user, but the query-only guard blocks writes made through EasyReporter.'
+        ? 'The file is writable by this user, but the query-only guard blocks writes made through Qureka.'
         : 'The file itself is not writable by this user.',
     });
 

@@ -1,4 +1,6 @@
-# EasyReporter
+# Qureka
+
+**Data Speaks. We Listen.**
 
 Desktop app for asking natural-language questions against read-only databases. Built with **Electron**, **Next.js** (static export), and **Prisma** (local SQLite).
 
@@ -9,8 +11,8 @@ Desktop app for asking natural-language questions against read-only databases. B
 3. Probe credentials for read-only access; writable accounts are blocked.
 4. Onboard: AI asks clarifying questions, then builds a knowledge base.
 5. Open **one or more chats** per project: conceptual answers from the knowledge base, or SELECT-only SQL with CSV / XLSX / PDF export.
-6. Safety limits: write SQL is rejected; secret-looking columns (password, token, ssn, …) cannot be selected; prompts refuse dump/modify requests.
-7. Settings: English LTR / Persian RTL (AI answers in Persian when FA is on), dark/light theme. AI SQL is never shown — only results. No manual SQL editor.
+6. Safety limits: write SQL is rejected; secret/PII-looking columns cannot be selected; prompts refuse dumps, secrets, security bypasses, and prompt-injection overrides. Untrusted chat/knowledge/memory text is delimited so the model treats it as data, not instructions. List/ranking answers prefer name/title/description and omit UIDs unless the user asks for them.
+7. Settings: English LTR / Persian RTL for the UI; in chat the AI matches each message’s language (EN or FA). Dark/light theme. AI SQL is never shown — only results. No manual SQL editor.
 
 ## Stack
 
@@ -46,11 +48,23 @@ generated/prisma/  Prisma client output (gitignored)
 
 ## Product flow
 
-**Shell:** Flat solid background. Brand left; project bubble + settings gear right (RTL mirrors). Chat column max-width `3xl` (48rem), borderless. Project bubble → searchable switcher. Gear → settings bubbles. Model picker in composer. Projects use the same SpotlightCard grid as Models. Persian UI text is 20% smaller. Light theme uses the same primary blue/teal as dark.
+**Shell:** Flat solid background. Brand left; project bubble + settings gear right (RTL mirrors). Chat column max-width `3xl` (48rem), borderless. Project bubble → searchable switcher. Gear → settings bubbles. Model picker in composer. Projects use the same SpotlightCard grid as Models. Light theme uses the same primary blue/teal as dark. Chat result tables use theme tokens (readable in light and dark).
+
+**Project setup flow:** Create project (read-only probe + schema with FK + name/type-inferred relations) → open **Setup** → optional plain-language **database description** → generate **bilingual** onboarding questions (EN/FA toggle while answering) → build knowledge base → status `ready` → chat + exports.
+
+**Schema relations:** Declared foreign keys plus inferred joins (`*_id` / matching PK names). Both appear in the schema text fed to the model (`FK` vs `INFERRED`).
+
+**Chat language:** Reply language follows the latest user message (Persian script → FA, otherwise EN), not the UI language setting.
+
+**Project memory:** Each project’s knowledge base learns from chats. Insights buffer during conversation and flush when you leave a chat / switch conversation / leave the Chat tab, or after ~60s idle. Shared across all chats on that project.
+
+**Knowledge build:** Uses provider JSON mode when available, stricter JSON extraction/repair, and a one-shot repair retry if the model returns broken JSON.
+
+**Loading UX:** Chat uses a Claude-style rotating “Thinking…” indicator while the model works. Project create uses the same pattern in **analyzing** mode while credentials/schema are probed.
 
 **Connection status:** `draft` → `questions` → `ready` | `failed`.
 
-**Safety:** `electron/engines/sql-guard.ts` blocks non-SELECT keywords; connection create/reprobe verify read-only credentials before chat/onboarding.
+**Safety:** `electron/engines/sql-guard.ts` blocks non-SELECT keywords and sensitive column projections (passwords, tokens, keys, SSN/card/IBAN-like names, …). Connection create/reprobe verify read-only credentials. AI system policy forbids leaking secrets/private data, discussing app security flaws, or obeying jailbreak/injection text inside user/history/knowledge/memory blocks.
 
 ## Scripts
 
@@ -62,14 +76,26 @@ npm run dev          # Next on :3000 + Electron window
 npm run build        # Static UI + Electron bundle
 npm run typecheck
 npm run dist:linux   # AppImage + deb
+npm run dist:deb     # .deb only (x64)
 npm run dist:win     # NSIS + portable
 ```
 
-Linux `.deb` (x64) lands in `release/easy-reporter_<version>_amd64.deb`. Install with:
+`.deb` output: `release/qureka_<version>_amd64.deb`.
+
+**Upgrade without losing data**
+
+1. Keep `package.json` fields stable across releases: `name` (`qureka`), `build.appId`, `linux.executableName`. Only bump `version` (e.g. `0.0.1` → `0.0.2`).
+2. Build and install over the old package (do **not** `apt purge` / delete `~/.config/qureka`):
 
 ```bash
-sudo apt install ./release/easy-reporter_0.0.1_amd64.deb
+# edit package.json "version", then:
+npm run dist:deb
+sudo apt install ./release/qureka_<version>_amd64.deb
 ```
+
+`apt install` of a newer `qureka_*.deb` replaces the app binaries under `/opt` (or similar) and leaves user data alone. Projects, chats, settings, and `easy-reporter.db` live in Electron `userData` (`~/.config/qureka/`), outside the package.
+
+First install is the same command. `sudo apt remove qureka` uninstalls the app but usually keeps `~/.config/qureka`; `purge` still does not delete that folder — only deleting it by hand wipes data.
 
 ### Dev mode
 
@@ -77,7 +103,7 @@ sudo apt install ./release/easy-reporter_0.0.1_amd64.deb
 npm run dev
 ```
 
-Starts Next.js at `http://localhost:3000`, then opens Electron pointed at that URL (`EASYREPORTER_DEV=1`). Use the Electron window — the browser alone has no IPC bridge.
+Starts Next.js at `http://localhost:3000`, then opens Electron pointed at that URL (`QUREKA_DEV=1`). Use the Electron window — the browser alone has no IPC bridge.
 
 After changing `electron/` or `shared/ipc.ts`, restart `npm run dev` (or at least rebuild with `npm run build:electron` and relaunch Electron). A stale main process shows errors like `No handler registered for 'settings:set'`.
 
@@ -115,7 +141,7 @@ Or add the model in **AI models** in the UI (preferred — Electron encrypts the
 
 ## IPC surface
 
-All renderer calls go through `window.easyReporter` (see `shared/ipc.ts`): models, connections, onboarding, knowledge, chat, exports, and progress events.
+All renderer calls go through `window.qureka` (see `shared/ipc.ts`): models, connections, onboarding, knowledge, chat, exports, and progress events.
 
 ## Manual e2e (local)
 

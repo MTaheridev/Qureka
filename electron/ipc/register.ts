@@ -29,6 +29,7 @@ import {
   removeConnection,
   reprobeConnection,
   setConnectionAiModel,
+  setConnectionBusinessBrief,
 } from '../services/connections';
 import {
   answerQuestion,
@@ -47,6 +48,7 @@ import {
   renameConversation,
   runManualSql,
 } from '../services/chat';
+import { flushLearning } from '../services/knowledge-learn';
 import { exportRun, exportSchema } from '../services/exports';
 
 function emitProgress(scope: ProgressEvent['scope'], connectionId: string) {
@@ -116,6 +118,9 @@ export function registerIpcHandlers(): void {
   handle(IPC_CHANNELS.connectionsSetAiModel, (id: string, aiModelId: string) =>
     setConnectionAiModel(id, aiModelId),
   );
+  handle(IPC_CHANNELS.connectionsSetBusinessBrief, (id: string, brief: string) =>
+    setConnectionBusinessBrief(id, brief),
+  );
   handle(IPC_CHANNELS.connectionsReprobe, (id: string) => reprobeConnection(id));
   handle(IPC_CHANNELS.connectionsRefresh, async (id: string) => {
     await refreshSchema(id, emitProgress('connection', id));
@@ -172,6 +177,7 @@ export function registerIpcHandlers(): void {
     runManualSql(conversationId, sql, emitProgress('chat', conversationId)),
   );
   handle(IPC_CHANNELS.chatClear, (conversationId: string) => clearConversation(conversationId));
+  handle(IPC_CHANNELS.chatFlushLearning, (connectionId: string) => flushLearning(connectionId));
 
   handle(IPC_CHANNELS.exportsRun, (runId: string, format: ExportFormat) =>
     exportRun(runId, format, emitProgress('export', runId)),

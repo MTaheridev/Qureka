@@ -15,6 +15,7 @@ export const IPC_CHANNELS = {
   connectionsCreate: 'connections:create',
   connectionsDelete: 'connections:delete',
   connectionsSetAiModel: 'connections:set-ai-model',
+  connectionsSetBusinessBrief: 'connections:set-business-brief',
   connectionsReprobe: 'connections:reprobe',
   connectionsRefresh: 'connections:refresh',
   connectionsSchema: 'connections:schema',
@@ -35,6 +36,7 @@ export const IPC_CHANNELS = {
   chatAsk: 'chat:ask',
   chatRunSql: 'chat:run-sql',
   chatClear: 'chat:clear',
+  chatFlushLearning: 'chat:flush-learning',
 
   exportsRun: 'exports:run',
 
@@ -133,6 +135,8 @@ export interface ConnectionView {
   readOnly: ReadOnlyReport | null;
   tableCount: number | null;
   hasKnowledge: boolean;
+  /** Plain-language description the user gives before onboarding questions. */
+  businessBrief: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -141,12 +145,21 @@ export type CreateConnectionResult =
   | { ok: true; connection: ConnectionView }
   | { ok: false; error: string; report?: ReadOnlyReport };
 
+export type RelationKind = 'fk' | 'inferred';
+
+export interface ColumnReference {
+  table: string;
+  column: string;
+  schema?: string;
+  kind?: RelationKind;
+}
+
 export interface ColumnInfo {
   name: string;
   dataType: string;
   nullable: boolean;
   primaryKey: boolean;
-  references: { table: string; column: string } | null;
+  references: ColumnReference | null;
 }
 
 export interface TableInfo {
@@ -158,11 +171,22 @@ export interface TableInfo {
   sampleColumns: string[];
 }
 
+export interface RelationEdge {
+  fromSchema: string;
+  fromTable: string;
+  fromColumn: string;
+  toSchema?: string;
+  toTable: string;
+  toColumn: string;
+  kind: RelationKind;
+}
+
 export interface SchemaSnapshot {
   engine: EngineId;
   fetchedAt: string;
   tables: TableInfo[];
   truncated: boolean;
+  relations?: RelationEdge[];
 }
 
 export interface SchemaSummary {
@@ -174,7 +198,10 @@ export interface SchemaSummary {
 export interface OnboardingQuestionView {
   id: string;
   position: number;
+  /** English prompt (default / storage key). */
   prompt: string;
+  /** Persian prompt; may equal prompt for legacy rows. */
+  promptFa: string;
   answer: string | null;
   skipped: boolean;
 }
@@ -188,6 +215,9 @@ export interface KnowledgeView {
   summary: string;
   content: string;
   glossary: GlossaryEntry[];
+  /** Durable insights learned from chats (JSON text or null). */
+  memory: string | null;
+  memoryUpdatedAt: string | null;
   updatedAt: string;
 }
 
@@ -246,7 +276,7 @@ export interface ProgressEvent {
   message: string;
 }
 
-export interface EasyReporterApi {
+export interface QurekaApi {
   getAppInfo(): Promise<AppInfo>;
   getDbStatus(): Promise<DbStatus>;
   getSettings(): Promise<AppSettings>;
@@ -266,6 +296,7 @@ export interface EasyReporterApi {
     create(input: ConnectionInput): Promise<CreateConnectionResult>;
     remove(id: string): Promise<void>;
     setAiModel(id: string, aiModelId: string): Promise<ConnectionView>;
+    setBusinessBrief(id: string, brief: string): Promise<ConnectionView>;
     reprobe(id: string): Promise<ReadOnlyReport>;
     refresh(id: string): Promise<SchemaSummary | null>;
     schema(id: string): Promise<SchemaSummary | null>;
@@ -293,6 +324,8 @@ export interface EasyReporterApi {
     ask(conversationId: string, message: string): Promise<AskResult>;
     runSql(conversationId: string, sql: string): Promise<AskResult>;
     clear(conversationId: string): Promise<ConversationView>;
+    /** Merge buffered chat insights into the project knowledge base. */
+    flushLearning(connectionId: string): Promise<KnowledgeView | null>;
   };
 
   exports: {
@@ -304,6 +337,6 @@ export interface EasyReporterApi {
 
 declare global {
   interface Window {
-    easyReporter?: EasyReporterApi;
+    qureka?: QurekaApi;
   }
 }

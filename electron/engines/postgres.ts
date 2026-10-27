@@ -45,7 +45,7 @@ export class PostgresAdapter implements EngineAdapter {
       ssl: this.connection.ssl ? { rejectUnauthorized: false } : undefined,
       connectionTimeoutMillis: LIMITS.connectTimeoutMs,
       query_timeout: LIMITS.statementTimeoutMs,
-      application_name: 'EasyReporter',
+      application_name: 'Qureka',
     };
   }
 

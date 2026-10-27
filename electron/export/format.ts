@@ -41,7 +41,7 @@ export function defaultFileName(parts: string[], extension: string): string {
     .map((part) => safeFileStem(part, ''))
     .filter(Boolean)
     .join('-');
-  return `${stem || 'easyreporter'}-${stamp}.${extension}`;
+  return `${stem || 'qureka'}-${stamp}.${extension}`;
 }
 
 export function resolveSavePath(directory: string, fileName: string): string {

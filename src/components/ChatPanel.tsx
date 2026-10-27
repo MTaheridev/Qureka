@@ -15,7 +15,8 @@ import { formatWhen } from '@/lib/format';
 import { useProgressFeed } from '@/lib/hooks';
 import { SuggestionChips } from '@/components/bits';
 import { useSettings } from '@/lib/settings';
-import { BusyLine, EmptyState, ErrorBanner, Icon, Spinner } from './ui';
+import { ThinkingIndicator } from './ThinkingIndicator';
+import { EmptyState, ErrorBanner, Icon, Spinner } from './ui';
 
 const FORMATS: { format: ExportFormat; label: string }[] = [
   { format: 'xlsx', label: 'Excel' },
@@ -113,6 +114,7 @@ export function ChatPanel({
     })();
     return () => {
       cancelled = true;
+      void getApi().chat.flushLearning(connection.id).catch(() => undefined);
     };
   }, [connection.id]);
 
@@ -126,6 +128,7 @@ export function ChatPanel({
     setError(null);
     setExportNote(null);
     try {
+      void getApi().chat.flushLearning(connection.id).catch(() => undefined);
       setActiveChatId(conversationId);
       await loadHistory(conversationId);
     } catch (selectError) {
@@ -138,6 +141,7 @@ export function ChatPanel({
   async function newChat() {
     setError(null);
     try {
+      void getApi().chat.flushLearning(connection.id).catch(() => undefined);
       const created = await getApi().chat.create(connection.id);
       await refreshChats(created.id);
       setMessages([]);
@@ -178,8 +182,8 @@ export function ChatPanel({
       if (!detail?.question || detail.projectId !== connection.id) return;
       void sendRef.current(detail.question);
     }
-    window.addEventListener('easyreporter:agent-ask', onAgentAsk);
-    return () => window.removeEventListener('easyreporter:agent-ask', onAgentAsk);
+    window.addEventListener('qureka:agent-ask', onAgentAsk);
+    return () => window.removeEventListener('qureka:agent-ask', onAgentAsk);
   }, [connection.id]);
 
   async function exportRun(runId: string, format: ExportFormat) {
@@ -303,9 +307,9 @@ export function ChatPanel({
           ))
         )}
         {sending ? (
-          <BusyLine
-            message="Working on your question"
-            detail={progress?.message ?? 'Waiting for the database'}
+          <ThinkingIndicator
+            mode="thinking"
+            detail={progress?.message ?? null}
           />
         ) : null}
         <div ref={endRef} />
