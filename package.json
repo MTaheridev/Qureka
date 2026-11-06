@@ -1,7 +1,8 @@
 {
   "name": "qureka",
   "productName": "Qureka",
-  "version": "0.1.1",
+  "desktopName": "app.taheri.qureka",
+  "version": "0.1.2",
   "private": true,
   "description": "Qureka — a desktop reporting application built with Next.js, Electron and Prisma.",
   "author": {
@@ -70,11 +71,14 @@
     "productName": "Qureka",
     "copyright": "Copyright © 2026 Mohammad Taheri",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
+    "icon": "build/icon.png",
     "files": [
       "dist-electron/**/*",
-      "out/**/*"
+      "out/**/*",
+      "build/icon.png"
     ],
     "extraResources": [
       {

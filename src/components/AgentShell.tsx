@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { AiModelView, AppInfo, ConnectionView, DbStatus } from '../../shared/ipc';
+import { BrandLogo } from '@/components/BrandLogo';
 import { ChatPanel } from '@/components/ChatPanel';
 import { ConnectionWorkspace } from '@/components/ConnectionWorkspace';
 import { ConnectionsView } from '@/components/ConnectionsView';
@@ -105,8 +106,8 @@ export function AgentShell() {
     return (
       <main className="bridge-page">
         <div className="bridge-card fade-in">
-          <span className="empty-icon">
-            <Icon name="database" size={26} />
+          <span className="empty-icon brand-empty-logo" aria-hidden="true">
+            <BrandLogo size={56} />
           </span>
           <h1>Open Qureka as a desktop app</h1>
           <p>
@@ -189,7 +190,7 @@ export function AgentShell() {
       <header className="agent-top">
         <button type="button" className="agent-brand" onClick={goHome}>
           <span className="agent-brand-mark" aria-hidden="true">
-            <Icon name="sparkle" size={22} />
+            <BrandLogo size={36} />
           </span>
           <span className="agent-brand-copy">
             <strong>Qureka</strong>
@@ -470,7 +471,7 @@ function AgentWelcome({
     <div className="agent-welcome">
       <div className="agent-welcome-body">
         <div className="agent-hero-mark">
-          <Icon name="sparkle" size={28} />
+          <BrandLogo size={72} />
         </div>
         <h1>{tr('chatAskTitle')}</h1>
         <p>{hint || tr('homeEmptyDetail')}</p>

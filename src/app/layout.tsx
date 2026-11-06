@@ -30,6 +30,10 @@ export const metadata: Metadata = {
   title: 'Qureka',
   description: 'Ask plain-language questions about your databases — safely, read-only.',
   authors: [{ name: 'Mohammad Taheri', url: 'https://taheri.vercel.app' }],
+  icons: {
+    icon: [{ url: '/favicon-32.png', sizes: '32x32', type: 'image/png' }],
+    apple: [{ url: '/logo.png', sizes: '500x500', type: 'image/png' }],
+  },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

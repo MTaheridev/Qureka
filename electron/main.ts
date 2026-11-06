@@ -7,6 +7,12 @@ import { runMigrations } from './db/migrate';
 const DEV_SERVER_URL = process.env.QUREKA_DEV_URL ?? process.env.EASYREPORTER_DEV_URL ?? 'http://localhost:3000/';
 const isDev = process.env.QUREKA_DEV === '1' || process.env.EASYREPORTER_DEV === '1';
 
+function resolveAppIcon(): string {
+  // Packaged: icon ships beside the asar via electron-builder `files`.
+  // Dev: use the source build/ icon next to the repo root.
+  return path.join(__dirname, '..', 'build', 'icon.png');
+}
+
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
     title: 'Qureka',
@@ -16,6 +22,7 @@ function createWindow(): BrowserWindow {
     minHeight: 600,
     show: false,
     autoHideMenuBar: true,
+    icon: resolveAppIcon(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -71,6 +78,7 @@ if (!singleInstanceLock) {
       applicationVersion: app.getVersion(),
       authors: ['Mohammad Taheri'],
       website: 'https://taheri.vercel.app',
+      iconPath: resolveAppIcon(),
     });
 
     try {
