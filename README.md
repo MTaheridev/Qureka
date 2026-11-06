@@ -36,8 +36,10 @@ Qureka turns a **read-only** database into a conversational reporting workspace.
 
 | You say… | Qureka does… |
 | --- | --- |
-| “Top 10 customers by revenue this quarter” | Writes safe `SELECT` SQL, runs it, shows a table |
-| “What does the `orders` table mean?” | Answers from the project knowledge base |
+| “Revenue” with no period | Asks one question with 4 choices before any report |
+| “Top 10 customers by revenue this quarter” | Writes safe `SELECT` SQL and shows a card or the first 10 rows |
+| “What does the `orders` table mean?” | Answers from the project knowledge base, in a line or two |
+| A result longer than 10 rows | **View full report** opens a separate window with search, filters, and sort |
 | “Export that” | Saves **CSV**, **Excel**, or **PDF** |
 
 ```text
@@ -61,7 +63,8 @@ mindmap
   root((Qureka))
     Ask in plain language
       Conceptual answers
-      Data tables
+      Cards and 10-row previews
+      Full report page
       CSV / XLSX / PDF
     Connect safely
       Read-only probe
@@ -123,7 +126,7 @@ flowchart LR
 | :---: | --- | --- |
 | **1** | **AI brain** | Add a model (name, base URL, model id, API key). Prefer UI entry — keys are encrypted at rest. |
 | **2** | **Projects** | Create a project → pick engine → enter credentials → wait for the read-only probe + schema scan. |
-| **3** | **Setup → Chat** | Optional business brief → bilingual clarifying questions → build knowledge → ask anything. |
+| **3** | **Setup → Chat** | Optional business brief → bilingual questions with 4 choices or a write-in → build knowledge → ask anything. |
 
 ### 3 · Day-to-day chat
 
@@ -145,9 +148,15 @@ flowchart LR
 └──────────────────────────────────────────────────────────────┘
 ```
 
-- **Conceptual** questions → written answers from knowledge / memory  
-- **Data** questions → safe `SELECT` → result grid → export  
-- **SQL is never shown** in the UI — only business language + tables  
+- **Unclear** data questions → one short question and 4 tap choices. No report until you pick.
+- **Conceptual** questions → a short written answer from knowledge / memory
+- **Clear data** questions → safe `SELECT`. One row with under 5 columns is a card. Other results show the first 10 rows.
+- **More than 10 rows** → the chat shows the first 10. **View full report** / **مشاهده گزارش کامل** opens a separate window
+- That window can search every column, filter, and sort. Excel and PDF export the filtered rows
+- **View SQL** opens the query in a modal
+- Each project can hold many chats. A sidebar lists them and switches the open one
+- Follow-up questions keep earlier choices. Long chats are summarized
+- Chat context and project memory sit at the bottom of the chat sidebar
 - Switch projects via the project bubble; open settings via the gear  
 
 ### 4 · Packaged installs
@@ -227,14 +236,16 @@ sequenceDiagram
   U->>UI: Plain-language question
   UI->>M: chat:ask
   M->>L: Schema + knowledge + memory + history
-  L-->>M: JSON · answer OR query mode
-  alt Conceptual answer
-    M-->>UI: Markdown answer
+  L-->>M: JSON · clarify, answer, or query
+  alt Needs a decision
+    M-->>UI: Question + 4 choices
+  else Conceptual answer
+    M-->>UI: Short answer
   else Data query
     M->>G: Validate SELECT-only
     G->>D: Run query
     D-->>M: Rows
-    M-->>UI: Table + export handles
+    M-->>UI: Card, 10-row preview, or report page
   end
   Note over M: Learning buffer flushes on leave / idle
 ```
@@ -290,7 +301,7 @@ Declared foreign keys **and** name-inferred joins (`*_id` ↔ matching PKs) are 
 | `DbConnection` | Projects + probe report + schema cache |
 | `OnboardingQuestion` | Bilingual clarifying Q&A |
 | `KnowledgeBase` | Summary, markdown, glossary, chat memory |
-| `Conversation` / `Message` / `QueryRun` | Chats + result spill for exports |
+| `Conversation` / `Message` / `QueryRun` | Chats, clarify choices (`payloadJson`), and result spill for the report page and exports |
 
 Dev DB: `prisma/easy-reporter.db` · Packaged: OS user-data directory.
 

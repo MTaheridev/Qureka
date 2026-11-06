@@ -13,6 +13,13 @@ import { useSettings } from '@/lib/settings';
 import { ThinkingIndicator } from './ThinkingIndicator';
 import { EmptyState, ErrorBanner, Icon, Notice, Spinner } from './ui';
 
+function choiceIndex(question: OnboardingQuestionView, value: string): number {
+  if (!value.trim()) return -1;
+  const inEnglish = (question.options ?? []).indexOf(value);
+  if (inEnglish >= 0) return inEnglish;
+  return (question.optionsFa ?? []).indexOf(value);
+}
+
 export function SetupPanel({
   connection,
   onChanged,
@@ -35,6 +42,7 @@ export function SetupPanel({
   const [busy, setBusy] = useState<'questions' | 'build' | 'brief' | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
+  const [writing, setWriting] = useState<Record<string, boolean>>({});
   const [builtNow, setBuiltNow] = useState(false);
   const progress = useProgressFeed();
 
@@ -90,8 +98,9 @@ export function SetupPanel({
     };
   }, [connection.id]);
 
-  async function saveAnswer(question: OnboardingQuestionView) {
-    const value = answers[question.id] ?? '';
+  async function saveAnswer(question: OnboardingQuestionView, nextValue?: string) {
+    const value = nextValue ?? answers[question.id] ?? '';
+    setAnswers((current) => ({ ...current, [question.id]: value }));
     setSavingId(question.id);
     setError(null);
     try {
@@ -273,39 +282,121 @@ export function SetupPanel({
                   questionLang === 'fa'
                     ? question.promptFa || question.prompt
                     : question.prompt;
+                const englishOptions = question.options ?? [];
+                const persianOptions = question.optionsFa ?? [];
+                const choices =
+                  questionLang === 'fa'
+                    ? persianOptions.length === 4
+                      ? persianOptions
+                      : englishOptions
+                    : englishOptions.length === 4
+                      ? englishOptions
+                      : persianOptions;
+                const selectedIndex = choiceIndex(question, value);
+                const showWrite =
+                  choices.length !== 4 ||
+                  writing[question.id] === true ||
+                  (value.trim().length > 0 && selectedIndex < 0);
+                const fa = questionLang === 'fa';
+                const customSelected = value.trim().length > 0 && selectedIndex < 0;
                 return (
-                  <li key={question.id} className="question">
-                    <div className="question-head" dir={questionLang === 'fa' ? 'rtl' : 'ltr'}>
+                  <li key={question.id} className={value.trim() ? 'question is-answered' : 'question'}>
+                    <div className="question-head" dir={fa ? 'rtl' : 'ltr'}>
                       <span className="question-index">Q{index + 1}</span>
                       <p>{promptText}</p>
                     </div>
-                    <textarea
-                      value={value}
-                      onChange={(event) =>
-                        setAnswers((current) => ({ ...current, [question.id]: event.target.value }))
-                      }
-                      placeholder="Answer in your own words, or leave blank to skip."
-                      rows={3}
-                    />
-                    <div className="question-foot">
-                      <span className="muted small">
-                        {value.trim() ? 'Included in the knowledge base' : 'Will be skipped if left blank'}
-                      </span>
-                      <div className="question-actions">
-                        {isSaved ? (
-                          <span className="saved-flag">
-                            <Icon name="check" size={14} /> Saved
-                          </span>
-                        ) : null}
+                    {choices.length === 4 ? (
+                      <div className="choice-grid" dir={fa ? 'rtl' : 'ltr'} role="group">
+                        {choices.map((option, optionIndex) => {
+                          const picked = selectedIndex === optionIndex;
+                          return (
+                            <button
+                              key={`${question.id}-${optionIndex}`}
+                              type="button"
+                              className="choice"
+                              aria-pressed={picked}
+                              onClick={() => {
+                                setWriting((current) => ({ ...current, [question.id]: false }));
+                                void saveAnswer(question, option);
+                              }}
+                              disabled={busy !== null}
+                            >
+                              <span className="choice-mark" aria-hidden="true">
+                                {picked ? <Icon name="check" size={12} /> : null}
+                              </span>
+                              <span className="choice-label">{option}</span>
+                            </button>
+                          );
+                        })}
                         <button
                           type="button"
-                          className="button small"
-                          onClick={() => void saveAnswer(question)}
-                          disabled={savingId === question.id || busy !== null}
+                          className="choice choice-write"
+                          aria-pressed={customSelected}
+                          onClick={() =>
+                            setWriting((current) => ({ ...current, [question.id]: true }))
+                          }
                         >
-                          {savingId === question.id ? <Spinner label="Saving" /> : 'Save answer'}
+                          <span className="choice-mark" aria-hidden="true">
+                            {customSelected ? <Icon name="check" size={12} /> : <Icon name="edit" size={12} />}
+                          </span>
+                          <span className="choice-label">
+                            {fa ? 'اگر بین گزینه‌ها نیست بنویس' : 'Write your own'}
+                          </span>
                         </button>
                       </div>
+                    ) : null}
+                    {showWrite ? (
+                      <textarea
+                        value={value}
+                        onChange={(event) =>
+                          setAnswers((current) => ({ ...current, [question.id]: event.target.value }))
+                        }
+                        placeholder={
+                          fa
+                            ? 'پاسخ خودت را بنویس، یا خالی بگذار تا رد شود.'
+                            : 'Write your own answer, or leave blank to skip.'
+                        }
+                        rows={3}
+                        dir={fa ? 'rtl' : 'ltr'}
+                      />
+                    ) : null}
+                    <div className="question-foot">
+                      <span className="muted small">
+                        {value.trim()
+                          ? fa
+                            ? 'در پایگاه دانش می‌آید'
+                            : 'Included in the knowledge base'
+                          : fa
+                            ? 'خالی بماند یعنی رد شود'
+                            : 'Will be skipped if left blank'}
+                      </span>
+                      {showWrite ? (
+                        <div className="question-actions">
+                          {isSaved ? (
+                            <span className="saved-flag">
+                              <Icon name="check" size={14} /> {fa ? 'ذخیره شد' : 'Saved'}
+                            </span>
+                          ) : null}
+                          <button
+                            type="button"
+                            className="button small"
+                            onClick={() => void saveAnswer(question)}
+                            disabled={savingId === question.id || busy !== null}
+                          >
+                            {savingId === question.id ? (
+                              <Spinner label={fa ? 'ذخیره' : 'Saving'} />
+                            ) : fa ? (
+                              'ذخیره پاسخ'
+                            ) : (
+                              'Save answer'
+                            )}
+                          </button>
+                        </div>
+                      ) : isSaved ? (
+                        <span className="saved-flag">
+                          <Icon name="check" size={14} /> {fa ? 'ذخیره شد' : 'Saved'}
+                        </span>
+                      ) : null}
                     </div>
                   </li>
                 );

@@ -70,6 +70,8 @@ model OnboardingQuestion {
   position     Int
   prompt       String // English
   promptFa     String  @default("") // Persian; empty for legacy rows until regenerated
+  /** {"en":["a","b","c","d"],"fa":["..."]} — four choices. Null on older rows. */
+  optionsJson  String?
   answer       String?
   skipped      Boolean  @default(false)
   createdAt    DateTime @default(now())
@@ -83,6 +85,10 @@ model Conversation {
   id           String   @id @default(cuid())
   connectionId String
   title        String
+  /** Folded older turns, used when the chat no longer fits the context budget. */
+  contextSummary  String?
+  /** Last message id included in contextSummary. */
+  contextUntilId  String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -100,6 +106,8 @@ model Message {
   sql            String?
   explanation    String?
   error          String?
+  /** Clarify questions: {"question":"...","options":["a","b","c","d"]} */
+  payloadJson    String?
   createdAt      DateTime @default(now())
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)

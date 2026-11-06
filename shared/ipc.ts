@@ -37,8 +37,12 @@ export const IPC_CHANNELS = {
   chatRunSql: 'chat:run-sql',
   chatClear: 'chat:clear',
   chatFlushLearning: 'chat:flush-learning',
+  chatReportPage: 'chat:report-page',
+  chatReportData: 'chat:report-data',
+  chatOpenReport: 'chat:open-report',
 
   exportsRun: 'exports:run',
+  exportsFiltered: 'exports:filtered',
 
   progress: 'app:progress',
 } as const;
@@ -202,6 +206,10 @@ export interface OnboardingQuestionView {
   prompt: string;
   /** Persian prompt; may equal prompt for legacy rows. */
   promptFa: string;
+  /** English choices. Empty on older questions. */
+  options: string[];
+  /** Persian choices, same order as options. */
+  optionsFa: string[];
   answer: string | null;
   skipped: boolean;
 }
@@ -236,6 +244,41 @@ export interface RunView {
   durationMs: number;
   truncated: boolean;
   canExport: boolean;
+  sql: string | null;
+}
+
+export interface ReportQuery {
+  search: string;
+  filters: string[];
+  sortColumn: number | null;
+  sortDirection: 'asc' | 'desc';
+}
+
+export interface ReportData {
+  runId: string;
+  title: string | null;
+  columns: string[];
+  rows: CellValue[][];
+  rowCount: number;
+  truncated: boolean;
+  sql: string | null;
+}
+
+export interface ClarifyPayload {
+  question: string;
+  options: string[];
+}
+
+export interface ReportPage {
+  runId: string;
+  title: string | null;
+  columns: string[];
+  rows: CellValue[][];
+  rowCount: number;
+  offset: number;
+  limit: number;
+  truncated: boolean;
+  canExport: boolean;
 }
 
 export interface ChatMessageView {
@@ -247,6 +290,7 @@ export interface ChatMessageView {
   error: string | null;
   createdAt: string;
   run: RunView | null;
+  clarify: ClarifyPayload | null;
 }
 
 export interface ConversationView {
@@ -257,9 +301,21 @@ export interface ConversationView {
   messageCount: number;
 }
 
+export interface ChatHistory {
+  messages: ChatMessageView[];
+  contextUsed: number;
+  contextLimit: number;
+  memoryUsed: number;
+  memoryLimit: number;
+}
+
 export interface AskResult {
   conversation: ConversationView;
   messages: ChatMessageView[];
+  contextUsed: number;
+  contextLimit: number;
+  memoryUsed: number;
+  memoryLimit: number;
 }
 
 export interface ExportResult {
@@ -320,16 +376,20 @@ export interface QurekaApi {
     create(connectionId: string, title?: string): Promise<ConversationView>;
     rename(conversationId: string, title: string): Promise<ConversationView>;
     remove(conversationId: string): Promise<void>;
-    history(conversationId: string): Promise<ChatMessageView[]>;
+    history(conversationId: string): Promise<ChatHistory>;
     ask(conversationId: string, message: string): Promise<AskResult>;
     runSql(conversationId: string, sql: string): Promise<AskResult>;
     clear(conversationId: string): Promise<ConversationView>;
     /** Merge buffered chat insights into the project knowledge base. */
     flushLearning(connectionId: string): Promise<KnowledgeView | null>;
+    reportPage(runId: string, offset: number, limit: number): Promise<ReportPage | null>;
+    reportData(runId: string): Promise<ReportData | null>;
+    openReport(runId: string): Promise<void>;
   };
 
   exports: {
     run(runId: string, format: ExportFormat): Promise<ExportResult | null>;
+    filtered(runId: string, format: 'xlsx' | 'pdf', query: ReportQuery): Promise<ExportResult | null>;
   };
 
   onProgress(listener: (event: ProgressEvent) => void): () => void;

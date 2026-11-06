@@ -232,6 +232,8 @@ export async function flushLearning(connectionId: string): Promise<KnowledgeView
   }
 }
 
+export const PROJECT_MEMORY_LIMIT = 8_000;
+
 export function formatProjectMemory(memoryJson: string | null | undefined): string | null {
   const insights = parseMemoryInsights(memoryJson);
   if (insights.length === 0) return null;
@@ -239,5 +241,15 @@ export function formatProjectMemory(memoryJson: string | null | undefined): stri
     .slice(-40)
     .map((entry) => `- [${entry.kind}] ${entry.text}`)
     .join('\n')
-    .slice(0, 8_000);
+    .slice(0, PROJECT_MEMORY_LIMIT);
+}
+
+export async function projectMemoryUsage(connectionId: string): Promise<{ used: number; limit: number }> {
+  const prisma = getPrisma();
+  const row = await prisma.knowledgeBase.findUnique({
+    where: { connectionId },
+    select: { memoryJson: true },
+  });
+  const text = formatProjectMemory(row?.memoryJson) ?? '';
+  return { used: text.length, limit: PROJECT_MEMORY_LIMIT };
 }

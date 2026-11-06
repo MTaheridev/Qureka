@@ -75,6 +75,7 @@ export function toRunView(row: {
   durationMs: number;
   truncated: boolean;
   resultPath: string | null;
+  sql?: string | null;
 }): RunView {
   let columns: string[] = [];
   let rows: CellValue[][] = [];
@@ -97,7 +98,25 @@ export function toRunView(row: {
     durationMs: row.durationMs,
     truncated: row.truncated,
     canExport: Boolean(row.resultPath) && columns.length > 0,
+    sql: row.sql?.trim() || null,
   };
+}
+
+export async function readRunPage(
+  resultPath: string,
+  offset: number,
+  limit: number,
+): Promise<CellValue[][]> {
+  const rows: CellValue[][] = [];
+  const start = Math.max(0, offset);
+  const end = start + Math.max(0, limit);
+  let index = 0;
+  for await (const row of readRunRows(resultPath)) {
+    if (index >= end) break;
+    if (index >= start) rows.push(row);
+    index += 1;
+  }
+  return rows;
 }
 
 export async function* readRunRows(resultPath: string): AsyncGenerator<CellValue[]> {

@@ -2,8 +2,12 @@ import type {
   AppLanguage,
   AskResult,
   CellValue,
+  ChatHistory,
   ChatMessageView,
+  ClarifyPayload,
   ConversationView,
+  ReportData,
+  ReportPage,
 } from '../../shared/ipc';
 import { getPrisma } from '../db/client';
 import { complete, type AiConfig } from '../ai/client';
@@ -25,7 +29,9 @@ import {
   bufferLearningTurn,
   formatProjectMemory,
 } from './knowledge-learn';
-import { captureRun, readRunRows, removeRunFile, toRunView, type CapturedRun } from './runs';
+import { captureRun, readRunPage, readRunRows, removeRunFile, toRunView, type CapturedRun } from './runs';
+import { measureContext, packContext, type ContextSource } from './context';
+import { projectMemoryUsage } from './knowledge-learn';
 
 const DEFAULT_TITLE = 'New chat';
 
@@ -37,6 +43,7 @@ type MessageRow = {
   sql: string | null;
   explanation: string | null;
   error: string | null;
+  payloadJson: string | null;
   createdAt: Date;
   run: {
     id: string;
@@ -53,6 +60,8 @@ type ConversationRow = {
   id: string;
   connectionId: string;
   title: string;
+  contextSummary: string | null;
+  contextUntilId: string | null;
   updatedAt: Date;
   _count?: { messages: number };
 };
@@ -78,7 +87,23 @@ function toMessageView(row: MessageRow): ChatMessageView {
     error: row.error,
     createdAt: row.createdAt.toISOString(),
     run: row.run ? toRunView(row.run) : null,
+    clarify: parseClarify(row.payloadJson),
   };
+}
+
+function parseClarify(payloadJson: string | null): ClarifyPayload | null {
+  if (!payloadJson) return null;
+  try {
+    const parsed = JSON.parse(payloadJson) as { question?: unknown; options?: unknown };
+    const question = typeof parsed.question === 'string' ? parsed.question.trim() : '';
+    const options = Array.isArray(parsed.options)
+      ? parsed.options.filter((option): option is string => typeof option === 'string' && option.trim().length > 0)
+      : [];
+    if (!question || options.length !== 4) return null;
+    return { question, options: options.map((option) => option.trim()) };
+  } catch {
+    return null;
+  }
 }
 
 function titleFromMessage(message: string): string {
@@ -174,10 +199,29 @@ export async function deleteConversation(conversationId: string): Promise<void> 
   }
 }
 
-export async function getHistory(conversationId: string): Promise<ChatMessageView[]> {
-  await getConversationOrThrow(conversationId);
+async function usageFields(
+  connectionId: string,
+  rows: MessageRow[],
+  summary: string | null,
+  untilId: string | null,
+) {
+  const usage = measureContext(rows, summary, untilId);
+  const memory = await projectMemoryUsage(connectionId);
+  return {
+    contextUsed: usage.used,
+    contextLimit: usage.limit,
+    memoryUsed: memory.used,
+    memoryLimit: memory.limit,
+  };
+}
+
+export async function getHistory(conversationId: string): Promise<ChatHistory> {
+  const conversation = await getConversationOrThrow(conversationId);
   const rows = await messageRows(conversationId);
-  return rows.map(toMessageView);
+  return {
+    messages: rows.map(toMessageView),
+    ...(await usageFields(conversation.connectionId, rows, conversation.contextSummary, conversation.contextUntilId)),
+  };
 }
 
 export async function clearConversation(conversationId: string): Promise<ConversationView> {
@@ -197,75 +241,47 @@ export async function clearConversation(conversationId: string): Promise<Convers
 
   const updated = await prisma.conversation.update({
     where: { id: conversationId },
-    data: { title: DEFAULT_TITLE, updatedAt: new Date() },
+    data: { title: DEFAULT_TITLE, contextSummary: null, contextUntilId: null, updatedAt: new Date() },
     include: { _count: { select: { messages: true } } },
   });
   return toConversationView(updated);
 }
 
-function formatAnswer(columns: string[], row: CellValue[]): string {
-  if (columns.length === 1) {
-    const value = row[0];
-    return value === null || value === undefined ? '—' : String(value);
-  }
-  return columns
-    .map((column, index) => {
-      const value = row[index];
-      const text = value === null || value === undefined ? '—' : String(value);
-      return `- **${column}:** ${text}`;
-    })
-    .join('\n');
-}
-
-function buildContent(
-  explanation: string | null,
-  captured: CapturedRun,
-  language: AppLanguage = 'en',
-): string {
+function buildContent(input: {
+  apology?: string;
+  note?: string;
+  captured: CapturedRun;
+  language?: AppLanguage;
+}): string {
+  const fa = input.language === 'fa';
   const parts: string[] = [];
-  const note = explanation?.trim();
+  const apology = input.apology?.trim();
+  const note = input.note?.trim();
+  if (apology) parts.push(apology);
   if (note) parts.push(note);
-  const fa = language === 'fa';
-
-  if (captured.rowCount === 0) {
-    parts.push(fa ? 'هیچ ردیفی با این درخواست مطابقت نداشت.' : 'No rows matched this request.');
-  } else if (captured.rowCount === 1 && !captured.truncated && captured.displayRows[0]) {
-    const answer = formatAnswer(captured.columns, captured.displayRows[0]);
-    parts.push(
-      captured.columns.length === 1
-        ? fa
-          ? `**پاسخ:** ${answer}`
-          : `**Answer:** ${answer}`
-        : answer,
-    );
-  } else {
-    const rows = captured.rowCount.toLocaleString(fa ? 'fa-IR' : 'en-US');
-    const ms = captured.durationMs.toLocaleString(fa ? 'fa-IR' : 'en-US');
-    parts.push(
-      fa
-        ? `**${rows}** ردیف در ${ms} میلی‌ثانیه برگردانده شد.`
-        : `Returned **${rows}** row${captured.rowCount === 1 ? '' : 's'} in ${ms} ms.`,
-    );
+  if (input.captured.rowCount === 0) {
+    parts.push(fa ? 'هیچ ردیفی با این درخواست مطابقت نداشت.' : 'No rows matched.');
   }
-  if (captured.truncated) {
+  if (input.captured.truncated) {
     parts.push(
       fa
-        ? 'نتیجه از حد ذخیره بزرگ‌تر بود؛ خروجی‌ها فقط شامل ردیف‌های ذخیره‌شده هستند.'
-        : 'The result was larger than the capture limit; exports contain only the captured rows.',
+        ? 'نتیجه از حد ذخیره بزرگ‌تر بود. خروجی فقط ردیف‌های ذخیره‌شده را دارد.'
+        : 'The result hit the capture limit. Exports include only the saved rows.',
     );
   }
   return parts.join('\n\n');
 }
 
-async function historyForPrompt(conversationId: string, excludeMessageId: string): Promise<HistoryMessage[]> {
-  const rows = await messageRows(conversationId);
-  return rows
-    .filter((row) => row.id !== excludeMessageId)
-    .slice(-8)
-    .map((row) => ({
-      role: row.role === 'user' ? 'user' : 'assistant',
-      content: [row.content, row.sql ? `SQL: ${row.sql}` : ''].filter(Boolean).join('\n').slice(0, 2_000),
-    }));
+function toContextSource(row: MessageRow): ContextSource {
+  return {
+    id: row.id,
+    role: row.role,
+    content: row.content,
+    sql: row.sql,
+    explanation: row.explanation,
+    payloadJson: row.payloadJson,
+    run: row.run ? { rowCount: row.run.rowCount } : null,
+  };
 }
 
 async function saveAssistantMessage(input: {
@@ -274,6 +290,7 @@ async function saveAssistantMessage(input: {
   sql: string | null;
   explanation: string | null;
   error: string | null;
+  payload?: ClarifyPayload | null;
   captured?: CapturedRun;
 }): Promise<void> {
   const prisma = getPrisma();
@@ -285,6 +302,7 @@ async function saveAssistantMessage(input: {
       sql: input.sql,
       explanation: input.explanation,
       error: input.error,
+      payloadJson: input.payload ? JSON.stringify(input.payload) : null,
     },
   });
 
@@ -315,8 +333,16 @@ async function saveAssistantMessage(input: {
 }
 
 type AnalystResult =
-  | { kind: 'answer'; answer: string; title?: string }
-  | { kind: 'query'; sql: string; explanation: string; captured: CapturedRun };
+  | { kind: 'answer'; answer: string; title?: string; apology: string }
+  | { kind: 'clarify'; question: string; options: string[]; apology: string }
+  | {
+      kind: 'query';
+      sql: string;
+      title: string;
+      note: string;
+      apology: string;
+      captured: CapturedRun;
+    };
 
 async function generateAndRun(input: {
   connectionId: string;
@@ -326,6 +352,7 @@ async function generateAndRun(input: {
   glossary: string | null;
   projectMemory: string | null;
   history: HistoryMessage[];
+  summary?: string | null;
   question: string;
   config: AiConfig;
   language: AppLanguage;
@@ -354,6 +381,7 @@ async function generateAndRun(input: {
             glossary: input.glossary,
             projectMemory: input.projectMemory,
             history: input.history,
+            summary: input.summary,
             question: input.question,
             language: input.language,
           })
@@ -373,13 +401,24 @@ async function generateAndRun(input: {
     });
 
     const parsed = parseWithSchema(reply, sqlResponseSchema);
-    if (responseMode(parsed) === 'answer') {
+    const mode = responseMode(parsed);
+    const apology = parsed.apology?.trim() ?? '';
+    if (mode === 'clarify') {
+      const question = parsed.question?.trim() ?? '';
+      const options = (parsed.options ?? []).map((option) => option.trim()).filter(Boolean);
+      if (!question || options.length !== 4) {
+        lastError = 'Clarify mode needs one question and exactly 4 options.';
+        continue;
+      }
+      return { kind: 'clarify', question, options, apology };
+    }
+    if (mode === 'answer') {
       const answer = parsed.answer?.trim();
       if (!answer) {
         lastError = 'The model returned an empty answer.';
         continue;
       }
-      return { kind: 'answer', answer, title: parsed.title };
+      return { kind: 'answer', answer, title: parsed.title, apology };
     }
 
     const rawSql = parsed.sql?.trim() ?? '';
@@ -405,7 +444,14 @@ async function generateAndRun(input: {
     );
     try {
       const captured = await captureRun(input.connectionId, statement);
-      return { kind: 'query', sql: statement, explanation: parsed.explanation ?? '', captured };
+      return {
+        kind: 'query',
+        sql: statement,
+        title: parsed.title?.trim() ?? '',
+        note: parsed.note?.trim() ?? '',
+        apology,
+        captured,
+      };
     } catch (error) {
       lastError = error instanceof Error ? error.message : 'The query failed.';
     }
@@ -457,7 +503,21 @@ export async function ask(
     });
   }
 
-  const history = await historyForPrompt(conversation.id, userMessage.id);
+  const priorRows = (await messageRows(conversation.id)).filter((row) => row.id !== userMessage.id);
+  const packed = await packContext({
+    rows: priorRows.map(toContextSource),
+    summary: conversation.contextSummary,
+    untilId: conversation.contextUntilId,
+    config,
+    language,
+    onProgress,
+  });
+  if (packed.summary !== (conversation.contextSummary ?? '') || packed.untilId !== conversation.contextUntilId) {
+    await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { contextSummary: packed.summary || null, contextUntilId: packed.untilId },
+    });
+  }
 
   try {
     onProgress?.(
@@ -479,7 +539,8 @@ export async function ask(
       knowledge: [knowledgeRow.summary, knowledgeRow.content].filter(Boolean).join('\n\n').slice(0, 25_000),
       glossary,
       projectMemory,
-      history,
+      history: packed.history,
+      summary: packed.summary,
       question,
       config,
       language,
@@ -487,29 +548,49 @@ export async function ask(
     });
 
     if (result.kind === 'answer') {
+      const content = [result.apology, result.answer].filter((part) => part.trim()).join('\n\n');
       await saveAssistantMessage({
         conversationId: conversation.id,
-        content: result.answer,
+        content,
         sql: null,
         explanation: result.title ?? null,
         error: null,
       });
       bufferLearningTurn(connectionId, { role: 'user', content: question });
-      bufferLearningTurn(connectionId, { role: 'assistant', content: result.answer });
+      bufferLearningTurn(connectionId, { role: 'assistant', content });
+    } else if (result.kind === 'clarify') {
+      await saveAssistantMessage({
+        conversationId: conversation.id,
+        content: result.apology,
+        sql: null,
+        explanation: null,
+        error: null,
+        payload: { question: result.question, options: result.options },
+      });
+      bufferLearningTurn(connectionId, { role: 'user', content: question });
+      bufferLearningTurn(connectionId, {
+        role: 'assistant',
+        content: [result.apology, result.question].filter((part) => part.trim()).join('\n'),
+      });
     } else {
-      const assistantContent = buildContent(result.explanation, result.captured, language);
+      const assistantContent = buildContent({
+        apology: result.apology,
+        note: result.note,
+        captured: result.captured,
+        language,
+      });
       await saveAssistantMessage({
         conversationId: conversation.id,
         content: assistantContent,
         sql: result.sql,
-        explanation: result.explanation,
+        explanation: result.title || null,
         error: null,
         captured: result.captured,
       });
       bufferLearningTurn(connectionId, { role: 'user', content: question });
       bufferLearningTurn(connectionId, {
         role: 'assistant',
-        content: [result.explanation, assistantContent].filter(Boolean).join('\n'),
+        content: [result.title, assistantContent].filter(Boolean).join('\n'),
       });
     }
   } catch (error) {
@@ -531,6 +612,7 @@ export async function ask(
   return {
     conversation: toConversationView(updated),
     messages: rows.map(toMessageView),
+    ...(await usageFields(updated.connectionId, rows, updated.contextSummary, updated.contextUntilId)),
   };
 }
 
@@ -581,9 +663,9 @@ export async function runManualSql(
     const captured = await captureRun(connectionId, statement);
     await saveAssistantMessage({
       conversationId: conversation.id,
-      content: buildContent('Query executed from the SQL editor.', captured),
+      content: buildContent({ captured }),
       sql: statement,
-      explanation: 'Query executed from the SQL editor.',
+      explanation: null,
       error: null,
       captured,
     });
@@ -603,6 +685,91 @@ export async function runManualSql(
   return {
     conversation: toConversationView(updated),
     messages: rows.map(toMessageView),
+    ...(await usageFields(updated.connectionId, rows, updated.contextSummary, updated.contextUntilId)),
+  };
+}
+
+export async function getReportPage(
+  runId: string,
+  offsetInput: number,
+  limitInput: number,
+): Promise<ReportPage | null> {
+  const prisma = getPrisma();
+  const run = await prisma.queryRun.findUnique({
+    where: { id: runId },
+    include: { message: true },
+  });
+  if (!run) return null;
+
+  const limit = Math.min(100, Math.max(1, Math.floor(Number(limitInput) || 50)));
+  const offset = Math.max(0, Math.floor(Number(offsetInput) || 0));
+  let columns: string[] = [];
+  try {
+    columns = JSON.parse(run.columnsJson) as string[];
+  } catch {
+    columns = [];
+  }
+
+  let rows: CellValue[][] = [];
+  if (run.resultPath) {
+    rows = await readRunPage(run.resultPath, offset, limit);
+  } else {
+    try {
+      const stored = JSON.parse(run.displayRowsJson) as CellValue[][];
+      rows = stored.slice(offset, offset + limit);
+    } catch {
+      rows = [];
+    }
+  }
+
+  return {
+    runId: run.id,
+    title: run.message.explanation?.trim() || null,
+    columns,
+    rows,
+    rowCount: run.rowCount,
+    offset,
+    limit,
+    truncated: run.truncated,
+    canExport: Boolean(run.resultPath) && columns.length > 0,
+  };
+}
+
+export async function getReportData(runId: string): Promise<ReportData | null> {
+  const prisma = getPrisma();
+  const run = await prisma.queryRun.findUnique({
+    where: { id: runId },
+    include: { message: true },
+  });
+  if (!run) return null;
+
+  let columns: string[] = [];
+  try {
+    columns = JSON.parse(run.columnsJson) as string[];
+  } catch {
+    columns = [];
+  }
+
+  const rows: CellValue[][] = [];
+  if (run.resultPath) {
+    for await (const row of readRunRows(run.resultPath)) rows.push(row);
+  } else {
+    try {
+      const stored = JSON.parse(run.displayRowsJson) as CellValue[][];
+      rows.push(...stored);
+    } catch {
+      // Leave the report empty when the spill file and the preview are both unreadable.
+    }
+  }
+
+  return {
+    runId: run.id,
+    title: run.message.explanation?.trim() || null,
+    columns,
+    rows,
+    rowCount: run.rowCount,
+    truncated: run.truncated,
+    sql: run.sql?.trim() || null,
   };
 }
 

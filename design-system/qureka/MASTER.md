@@ -76,9 +76,13 @@ No gradient aurora backdrop. Respect `prefers-reduced-motion`.
 8. Non-ready projects always open Setup (never skip onboarding)
 9. Long waits use `ThinkingIndicator` (rotating phrases + animated dots): chat = thinking, DB create = analyzing
 10. Setup starts with an optional business-brief textarea before generating questions; brief is stored on the connection and fed into question + knowledge prompts
-11. Onboarding questions are bilingual (EN + FA) with a segmented language toggle while answering
+11. Onboarding questions are bilingual (EN + FA) with a segmented language toggle. Each question has 4 choices plus **Write your own** / **اگر بین گزینه‌ها نیست بنویس**. The picked choice stays filled in primary blue with a check, including on hover
 12. Chat AI language follows the user message (EN/FA), not the UI language setting
+13. Chat tables: title and “showing the top 10 rows” on the left, **View full report** on the right, the grid in the middle, **View SQL** and exports in the footer. Persian text and RTL tables use Vazirmatn, with headers aligned to the start. The full report opens in its own window with search, column filters, sort, and Excel/PDF of the filtered rows
+14. When the model is unsure, the bubble shows one question and exactly 4 selectable options. No typed answer on that question
 13. Project knowledge learns from chats (flush on leave / idle); show memory meta on the knowledge panel
+15. Chat context and project memory sit in the sidebar footer, pinned to the bottom. Each label is 12px with a 3px track. They turn warm at 70% and hot at 90%
+16. The chat stage fills the window. A 280px sidebar panel sits 16px from the conversation. The thread and composer stay within 48rem, centered in the remaining column. The current chat uses the primary color and a start bar. **New chat** is a labeled button. Long titles stay on one line, and the full title is on the control. On a narrow window the list stacks above the conversation and scrolls on its own
 
 ## Avoid
 

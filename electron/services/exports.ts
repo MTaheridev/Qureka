@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { app, BrowserWindow, dialog } from 'electron';
-import type { CellValue, ExportFormat, ExportResult } from '../../shared/ipc';
+import type { CellValue, ExportFormat, ExportResult, ReportQuery } from '../../shared/ipc';
+import { applyReportQuery, cleanReportQuery } from '../../shared/report-query';
 import { getPrisma } from '../db/client';
 import { writeCsv } from '../export/csv';
 import { defaultFileName } from '../export/format';
@@ -115,6 +116,74 @@ export async function exportRun(
     if (!existed) {
       await fs.promises.rm(filePath, { force: true }).catch(() => undefined);
     }
+    throw error;
+  }
+}
+
+async function* iterateRows(rows: CellValue[][]): AsyncGenerator<CellValue[]> {
+  for (const row of rows) yield row;
+}
+
+export async function exportFilteredRun(
+  runId: string,
+  format: 'xlsx' | 'pdf',
+  queryInput: ReportQuery,
+  onProgress?: (message: string) => void,
+): Promise<ExportResult | null> {
+  if (format !== 'xlsx' && format !== 'pdf') throw new Error('Choose Excel or PDF.');
+
+  const prisma = getPrisma();
+  const run = await prisma.queryRun.findUnique({
+    where: { id: runId },
+    include: {
+      message: {
+        include: {
+          conversation: {
+            include: { connection: { select: { name: true } } },
+          },
+        },
+      },
+    },
+  });
+  if (!run) throw new Error('This result no longer exists.');
+  if (!run.resultPath || !fs.existsSync(run.resultPath)) {
+    throw new Error('The result data for this query is no longer available. Run the query again.');
+  }
+
+  const columns = parseColumns(run.columnsJson);
+  if (columns.length === 0) throw new Error('This result has no columns to export.');
+
+  const stored: CellValue[][] = [];
+  for await (const row of readRunRows(run.resultPath)) stored.push(row);
+  const query = cleanReportQuery(queryInput, columns.length);
+  const filtered = applyReportQuery(stored, query);
+  const connectionName = run.message.conversation.connection.name;
+  const title = run.message.explanation?.trim() || run.message.conversation.title || 'Report';
+  const info = FORMAT_INFO[format];
+
+  onProgress?.('Choosing where to save the file');
+  const filePath = await saveDialog(defaultFileName([connectionName, title], info.extension), format);
+  if (!filePath) return null;
+
+  const existed = fs.existsSync(filePath);
+  try {
+    if (format === 'xlsx') {
+      onProgress?.('Writing Excel rows');
+      const rows = await writeXlsx(filePath, columns, iterateRows(filtered), onProgress);
+      return { path: filePath, format, rows, truncated: false };
+    }
+    const result = await writePdf({
+      filePath,
+      title: `${connectionName} — ${title}`,
+      columns,
+      rows: iterateRows(filtered),
+      totalRows: filtered.length,
+      alreadyTruncated: run.truncated,
+      onProgress,
+    });
+    return { path: filePath, format, rows: result.rows, truncated: result.truncated };
+  } catch (error) {
+    if (!existed) await fs.promises.rm(filePath, { force: true }).catch(() => undefined);
     throw error;
   }
 }

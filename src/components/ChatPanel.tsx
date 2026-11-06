@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import type {
   AiModelView,
+  ChatHistory,
   ChatMessageView,
   ConnectionView,
   ConversationView,
@@ -16,7 +17,35 @@ import { useProgressFeed } from '@/lib/hooks';
 import { SuggestionChips } from '@/components/bits';
 import { useSettings } from '@/lib/settings';
 import { ThinkingIndicator } from './ThinkingIndicator';
+import { hasPersian, resultDir } from '@/lib/script';
 import { EmptyState, ErrorBanner, Icon, Spinner } from './ui';
+
+const CHAT_PREVIEW_ROWS = 10;
+
+function ContextMeter({
+  used,
+  limit,
+  name,
+  ownTrack = false,
+}: {
+  used: number;
+  limit: number;
+  name: string;
+  ownTrack?: boolean;
+}) {
+  const percent = limit > 0 ? Math.round((used / limit) * 100) : 0;
+  const width = Math.min(100, Math.max(0, percent));
+  const tone = percent >= 90 ? 'hot' : percent >= 70 ? 'warm' : '';
+  return (
+    <div className={`context-meter ${ownTrack ? 'own-track' : ''}`} aria-label={`${name} ${percent}%`}>
+      <span className="context-meter-track" aria-hidden="true">
+        <span className={`context-meter-fill ${tone}`} style={{ width: `${width}%` }} />
+      </span>
+      <span className="context-meter-name">{name}</span>
+      <span className="context-meter-label">{percent}%</span>
+    </div>
+  );
+}
 
 const FORMATS: { format: ExportFormat; label: string }[] = [
   { format: 'xlsx', label: 'Excel' },
@@ -54,6 +83,10 @@ export function ChatPanel({
   const [error, setError] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [contextUsed, setContextUsed] = useState(0);
+  const [contextLimit, setContextLimit] = useState(12_000);
+  const [memoryUsed, setMemoryUsed] = useState(0);
+  const [memoryLimit, setMemoryLimit] = useState(8_000);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [exporting, setExporting] = useState<{ runId: string; format: ExportFormat } | null>(null);
   const [exportNote, setExportNote] = useState<{ runId: string; ok: boolean; text: string } | null>(null);
@@ -84,9 +117,16 @@ export function ChatPanel({
     return nextId;
   }
 
+  function applyHistory(history: ChatHistory) {
+    setMessages(history.messages);
+    setContextUsed(history.contextUsed);
+    setContextLimit(history.contextLimit || 12_000);
+    setMemoryUsed(history.memoryUsed ?? 0);
+    setMemoryLimit(history.memoryLimit || 8_000);
+  }
+
   async function loadHistory(conversationId: string) {
-    const history = await getApi().chat.history(conversationId);
-    setMessages(history);
+    applyHistory(await getApi().chat.history(conversationId));
   }
 
   useEffect(() => {
@@ -103,7 +143,7 @@ export function ChatPanel({
         setActiveChatId(first);
         if (first) {
           const history = await getApi().chat.history(first);
-          if (!cancelled) setMessages(history);
+          if (!cancelled) applyHistory(history);
         }
         setError(null);
       } catch (loadError) {
@@ -145,6 +185,7 @@ export function ChatPanel({
       const created = await getApi().chat.create(connection.id);
       await refreshChats(created.id);
       setMessages([]);
+      setContextUsed(0);
       setExportNote(null);
     } catch (createError) {
       setError(errorMessage(createError));
@@ -161,6 +202,10 @@ export function ChatPanel({
     try {
       const result = await getApi().chat.ask(activeChatId, question);
       setMessages(result.messages);
+      setContextUsed(result.contextUsed);
+      setContextLimit(result.contextLimit || 12_000);
+      setMemoryUsed(result.memoryUsed ?? 0);
+      setMemoryLimit(result.memoryLimit || 8_000);
       setChats((current) => {
         const others = current.filter((chat) => chat.id !== result.conversation.id);
         return [result.conversation, ...others];
@@ -234,35 +279,51 @@ export function ChatPanel({
 
   return (
     <div className={`chat-layout ${compact ? 'compact' : ''}`}>
-      <aside className="chat-rail" aria-label="Chats in this project">
+      <aside className="chat-rail" aria-label={tr('chatsTitle')}>
+        <a className="skip-link" href="#chat-thread">
+          {tr('skipToChat')}
+        </a>
         <div className="chat-rail-head">
-          <div>
-            <strong>Chats</strong>
-            <span className="muted small">In this project</span>
-          </div>
-          <button type="button" className="button small primary" onClick={() => void newChat()}>
-            <Icon name="plus" size={14} /> New
-          </button>
+          <strong>{tr('chatsTitle')}</strong>
+          <span className="muted small">{tr('chatsInProject')}</span>
         </div>
+        <button type="button" className="button primary chat-rail-new" onClick={() => void newChat()}>
+          <Icon name="plus" size={14} /> {tr('newChat')}
+        </button>
         <div className="chat-rail-list">
           {chats.map((chat) => (
             <button
               key={chat.id}
               type="button"
               className={chat.id === activeChatId ? 'chat-rail-item active' : 'chat-rail-item'}
+              aria-current={chat.id === activeChatId ? 'true' : undefined}
+              title={chat.title}
               onClick={() => void selectChat(chat.id)}
               disabled={switching || sending}
             >
               <span className="chat-rail-title">{chat.title}</span>
-              <span className="muted small">
-                {chat.messageCount} msg · {formatWhen(chat.updatedAt)}
+              <span className="muted small chat-rail-meta">
+                {chat.messageCount} · {formatWhen(chat.updatedAt)}
               </span>
             </button>
           ))}
         </div>
+        <div className="chat-rail-meters">
+          <ContextMeter
+            used={contextUsed + input.length}
+            limit={contextLimit}
+            name={tr('contextMeter')}
+          />
+          <ContextMeter
+            used={memoryUsed}
+            limit={memoryLimit}
+            name={tr('projectMemory')}
+            ownTrack
+          />
+        </div>
       </aside>
 
-      <div className="chat">
+      <div className="chat" id="chat-thread">
       {error ? <ErrorBanner message={error} /> : null}
 
       <div className="messages">
@@ -300,9 +361,16 @@ export function ChatPanel({
               exporting={exporting}
               exportNote={exportNote}
               knowledgeLabel={tr('knowledgeAnswer')}
+              viewReportLabel={tr('viewReport')}
               onExport={(format) => {
                 if (message.run) void exportRun(message.run.id, format);
               }}
+              onViewReport={() => {
+                if (!message.run) return;
+                void getApi().chat.openReport(message.run.id);
+              }}
+              onChoose={(option) => void send(option)}
+              choicesDisabled={sending}
             />
           ))
         )}
@@ -315,6 +383,7 @@ export function ChatPanel({
         <div ref={endRef} />
       </div>
 
+      <div className={`composer-stack ${compact ? 'agent' : ''}`}>
       <div className={`composer ${compact ? 'composer-agent' : ''}`}>
         <textarea
           value={input}
@@ -406,6 +475,7 @@ export function ChatPanel({
         )}
       </div>
       </div>
+      </div>
     </div>
   );
 }
@@ -415,13 +485,21 @@ function MessageRow({
   exporting,
   exportNote,
   knowledgeLabel,
+  viewReportLabel,
   onExport,
+  onViewReport,
+  onChoose,
+  choicesDisabled,
 }: {
   message: ChatMessageView;
   exporting: { runId: string; format: ExportFormat } | null;
   exportNote: { runId: string; ok: boolean; text: string } | null;
   knowledgeLabel: string;
+  viewReportLabel: string;
   onExport: (format: ExportFormat) => void;
+  onViewReport: () => void;
+  onChoose: (option: string) => void;
+  choicesDisabled: boolean;
 }) {
   if (message.role === 'user') {
     return (
@@ -432,25 +510,53 @@ function MessageRow({
     );
   }
 
+  const showProse = Boolean(message.content.trim()) && !message.clarify;
+  const showKnowledge = showProse && !message.error && !message.run;
+
   return (
     <div className="message assistant">
       <div className="avatar">
         <Icon name="sparkle" size={15} />
       </div>
       <div className="message-body">
-        {!message.error && !message.run ? (
-          <span className="answer-pill">{knowledgeLabel}</span>
+        {showKnowledge ? <span className="answer-pill">{knowledgeLabel}</span> : null}
+        {message.clarify ? (
+          <div className="clarify-block">
+            {message.content.trim() ? (
+              <div className={`markdown ${message.error ? 'markdown-error' : ''}`}>
+                <ReactMarkdown>{message.content}</ReactMarkdown>
+              </div>
+            ) : null}
+            <p className="clarify-question">{message.clarify.question}</p>
+            <div className="clarify-options">
+              {message.clarify.options.map((option, index) => (
+                <button
+                  key={`${index}-${option}`}
+                  type="button"
+                  className="button clarify-option"
+                  onClick={() => onChoose(option)}
+                  disabled={choicesDisabled}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : showProse ? (
+          <div className={`markdown ${message.error ? 'markdown-error' : ''}`}>
+            <ReactMarkdown>{message.content}</ReactMarkdown>
+          </div>
         ) : null}
-        <div className={`markdown ${message.error ? 'markdown-error' : ''}`}>
-          <ReactMarkdown>{message.content}</ReactMarkdown>
-        </div>
 
         {message.run ? (
           <ResultView
             run={message.run}
+            title={message.explanation}
             exporting={exporting}
             note={exportNote}
+            viewReportLabel={viewReportLabel}
             onExport={onExport}
+            onViewReport={onViewReport}
           />
         ) : null}
 
@@ -462,32 +568,96 @@ function MessageRow({
 
 function ResultView({
   run,
+  title,
   exporting,
   note,
+  viewReportLabel,
   onExport,
+  onViewReport,
 }: {
   run: RunView;
+  title: string | null;
   exporting: { runId: string; format: ExportFormat } | null;
   note: { runId: string; ok: boolean; text: string } | null;
+  viewReportLabel: string;
   onExport: (format: ExportFormat) => void;
+  onViewReport: () => void;
 }) {
-  const singleWide =
-    run.rowCount === 1 &&
-    run.rows[0] &&
-    run.columns.length >= 2 &&
-    run.columns.every((column, index) => {
-      const value = run.rows[0]?.[index];
-      return value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean';
-    });
+  const { dir, tr } = useSettings();
+  const [sqlOpen, setSqlOpen] = useState(false);
+  if (run.rowCount === 0 || run.columns.length === 0) return null;
+
+  const isCard = run.rowCount === 1 && run.columns.length < 5 && Boolean(run.rows[0]);
+  const previewRows = run.rows.slice(0, CHAT_PREVIEW_ROWS);
+  const tableDirection = resultDir(run.columns, dir);
+  const titleText = title?.trim() || (tableDirection === 'rtl' ? 'نتیجه' : 'Result');
 
   return (
-    <section className="result">
-      <div className="result-head">
-        <span>
-          <strong>{run.rowCount.toLocaleString()}</strong>{' '}
-          {run.rowCount === 1 ? 'row' : 'rows'} · {run.durationMs.toLocaleString()} ms
-          {run.truncated ? ' · capture limit reached' : ''}
-        </span>
+    <section className="result" dir={tableDirection}>
+      {!isCard ? (
+        <div className="result-head">
+          <div className="result-title">
+            <strong className={hasPersian(titleText) ? 'cell-fa' : undefined}>{titleText}</strong>
+            {run.rowCount > CHAT_PREVIEW_ROWS ? (
+              <span className="muted">· {tr('showingTop', { count: String(CHAT_PREVIEW_ROWS) })}</span>
+            ) : null}
+          </div>
+          <button type="button" className="button small primary" onClick={onViewReport}>
+            {viewReportLabel}
+          </button>
+        </div>
+      ) : null}
+
+      {isCard && run.rows[0] ? (
+        <dl className={`result-card ${tableDirection === 'rtl' ? 'cell-fa' : ''}`}>
+          {run.columns.map((column, index) => (
+            <div key={`${column}-${index}`} className="result-card-item">
+              <dt className={hasPersian(column) ? 'cell-fa' : undefined}>{column}</dt>
+              <dd className={run.rows[0]?.[index] === null ? 'cell-null' : hasPersian(cellText(run.rows[0]?.[index] ?? null)) ? 'cell-fa' : undefined}>
+                {cellText(run.rows[0]?.[index] ?? null)}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      ) : (
+        <div className="grid-scroll">
+          <table className={`data-grid ${tableDirection === 'rtl' ? 'rtl-grid' : ''}`} dir={tableDirection}>
+            <thead>
+              <tr>
+                {run.columns.map((column, index) => (
+                  <th key={`${column}-${index}`} className={hasPersian(column) ? 'cell-fa' : undefined}>
+                    {column}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {previewRows.map((row, rowIndex) => (
+                <tr key={rowIndex}>
+                  {run.columns.map((column, columnIndex) => {
+                    const value = row[columnIndex];
+                    const text = cellText(value ?? null);
+                    const faCell = hasPersian(text);
+                    return (
+                      <td
+                        key={`${column}-${columnIndex}`}
+                        className={value === null ? 'cell-null' : faCell ? 'cell-fa' : ''}
+                      >
+                        {text}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="result-foot">
+        <button type="button" className="button small ghost" onClick={() => setSqlOpen(true)}>
+          {tr('viewSql')}
+        </button>
         {run.canExport ? (
           <div className="export-actions">
             {FORMATS.map(({ format, label }) => {
@@ -508,62 +678,30 @@ function ResultView({
         ) : null}
       </div>
 
-      {run.truncated ? (
-        <p className="muted small result-note">
-          The result exceeded the 200,000-row capture limit. Exports contain only the captured rows.
-        </p>
-      ) : null}
-
-      {singleWide && run.rows[0] ? (
-        <dl className="result-facts">
-          {run.columns.map((column, index) => (
-            <div key={`${column}-${index}`} className="result-fact">
-              <dt>{column}</dt>
-              <dd className={run.rows[0]?.[index] === null ? 'cell-null' : undefined}>
-                {cellText(run.rows[0]?.[index] ?? null)}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      ) : (
-        <div className="grid-scroll">
-          <table className="data-grid">
-            <thead>
-              <tr>
-                {run.columns.map((column, index) => (
-                  <th key={`${column}-${index}`}>{column}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {run.rows.map((row, rowIndex) => (
-                <tr key={rowIndex}>
-                  {run.columns.map((column, columnIndex) => {
-                    const value = row[columnIndex];
-                    return (
-                      <td key={`${column}-${columnIndex}`} className={value === null ? 'cell-null' : ''}>
-                        {cellText(value ?? null)}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {run.rowCount > run.rows.length ? (
-        <p className="muted small result-note">
-          Showing the first {run.rows.length.toLocaleString()} of {run.rowCount.toLocaleString()} rows.
-          Export the result to get every captured row.
-        </p>
-      ) : null}
-
       {note?.runId === run.id ? (
         <div className={`banner ${note.ok ? 'banner-ok' : 'banner-bad'}`}>
           <Icon name={note.ok ? 'check' : 'alert'} size={15} />
           <span>{note.text}</span>
+        </div>
+      ) : null}
+
+      {sqlOpen ? (
+        <div className="sql-modal-backdrop" onClick={() => setSqlOpen(false)} role="presentation">
+          <div
+            className="sql-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={`sql-${run.id}`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="sql-modal-head">
+              <h2 id={`sql-${run.id}`}>{tr('sqlTitle')}</h2>
+              <button type="button" className="button small ghost" onClick={() => setSqlOpen(false)}>
+                {tr('close')}
+              </button>
+            </div>
+            <pre className="sql-view">{run.sql?.trim() || tr('sqlMissing')}</pre>
+          </div>
         </div>
       ) : null}
     </section>

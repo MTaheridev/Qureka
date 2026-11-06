@@ -8,14 +8,14 @@
 
 ## What the app does
 
-Desktop AI reporting: connect a **read-only** database, teach Qureka your schema via onboarding, then ask questions in plain language. Answers are conceptual (knowledge) or tabular (`SELECT` only) with CSV / XLSX / PDF export. SQL is never shown in the UI.
+Desktop AI reporting: connect a **read-only** database, teach Qureka your schema via onboarding, then ask questions in plain language. Unclear asks get 4 choices. Clear data asks return a card or a 10-row preview. **View full report** opens a separate window with search, filters, sort, and Excel/PDF of the filtered rows. **View SQL** shows the query in a modal.
 
 ## How to use (short)
 
 1. `npm install` → `npm run db:generate` → `npm run db:migrate` → `npm run dev`
 2. Add an **AI brain** (OpenAI- or Anthropic-compatible)
 3. Create a **project** (Postgres / MySQL / MSSQL / SQLite) — writable logins are blocked
-4. Complete **Setup** (brief → bilingual questions → knowledge) → **Chat**
+4. Complete **Setup** (brief → bilingual questions with choices → knowledge) → **Chat**
 
 ## How it works (short)
 
@@ -30,9 +30,9 @@ Next.js UI  →  window.qureka (preload)  →  Electron services
 | Stage | Behavior |
 | --- | --- |
 | Probe | Verifies read-only credentials; caches schema + FK / inferred relations |
-| Onboarding | AI generates EN/FA questions; answers feed the knowledge base |
-| Chat | LLM returns `answer` or `query` JSON; queries pass the SQL guard |
-| Memory | Chat insights buffer and flush on leave / idle into project knowledge |
+| Onboarding | AI generates EN/FA questions with 4 choices each, plus a write-in. Answers feed the knowledge base |
+| Chat | LLM returns `answer`, `clarify`, or `query` JSON. Doubt becomes 4 tap choices and no SQL. Each project can hold many chats. A sidebar panel lists them and switches the open one. The conversation stays in a readable column. Later questions keep earlier choices. When a chat outgrows its context budget, older turns are summarized. Chat context and project memory sit at the bottom of the chat sidebar. Chat shows a card (1 row, under 5 columns) or the first 10 rows. **View full report** opens its own window. **View SQL** shows the query. Persian tables use Vazirmatn and RTL headers. |
+| Memory | Chat insights buffer and flush on leave / idle into project knowledge. That memory stays with the project and is sent with every chat |
 
 ## Key paths
 

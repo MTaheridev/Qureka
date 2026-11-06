@@ -7,6 +7,7 @@ import type {
   QurekaApi,
   ExportFormat,
   ProgressEvent,
+  ReportQuery,
 } from '../shared/ipc';
 
 const api: QurekaApi = {
@@ -70,11 +71,17 @@ const api: QurekaApi = {
     clear: (conversationId: string) => ipcRenderer.invoke(IPC_CHANNELS.chatClear, conversationId),
     flushLearning: (connectionId: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.chatFlushLearning, connectionId),
+    reportPage: (runId: string, offset: number, limit: number) =>
+      ipcRenderer.invoke(IPC_CHANNELS.chatReportPage, runId, offset, limit),
+    reportData: (runId: string) => ipcRenderer.invoke(IPC_CHANNELS.chatReportData, runId),
+    openReport: (runId: string) => ipcRenderer.invoke(IPC_CHANNELS.chatOpenReport, runId),
   },
 
   exports: {
     run: (runId: string, format: ExportFormat) =>
       ipcRenderer.invoke(IPC_CHANNELS.exportsRun, runId, format),
+    filtered: (runId: string, format: 'xlsx' | 'pdf', query: ReportQuery) =>
+      ipcRenderer.invoke(IPC_CHANNELS.exportsFiltered, runId, format, query),
   },
 
   onProgress: (listener: (event: ProgressEvent) => void) => {

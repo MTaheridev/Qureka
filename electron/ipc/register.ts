@@ -9,6 +9,7 @@ import type {
   DbStatus,
   ExportFormat,
   ProgressEvent,
+  ReportQuery,
 } from '../../shared/ipc';
 import { databaseFilePath } from '../db/paths';
 import { keyStorageLabel } from '../services/secrets';
@@ -44,12 +45,15 @@ import {
   createConversation,
   deleteConversation,
   getHistory,
+  getReportData,
+  getReportPage,
   listConversations,
   renameConversation,
   runManualSql,
 } from '../services/chat';
 import { flushLearning } from '../services/knowledge-learn';
-import { exportRun, exportSchema } from '../services/exports';
+import { exportFilteredRun, exportRun, exportSchema } from '../services/exports';
+import { openReportWindow } from '../windows';
 
 function emitProgress(scope: ProgressEvent['scope'], connectionId: string) {
   return (message: string): void => {
@@ -178,8 +182,20 @@ export function registerIpcHandlers(): void {
   );
   handle(IPC_CHANNELS.chatClear, (conversationId: string) => clearConversation(conversationId));
   handle(IPC_CHANNELS.chatFlushLearning, (connectionId: string) => flushLearning(connectionId));
+  handle(IPC_CHANNELS.chatReportPage, (runId: string, offset: number, limit: number) =>
+    getReportPage(runId, offset, limit),
+  );
+  handle(IPC_CHANNELS.chatReportData, (runId: string) => getReportData(runId));
+  handle(IPC_CHANNELS.chatOpenReport, (runId: string) => {
+    openReportWindow(runId);
+  });
 
   handle(IPC_CHANNELS.exportsRun, (runId: string, format: ExportFormat) =>
     exportRun(runId, format, emitProgress('export', runId)),
+  );
+  handle(
+    IPC_CHANNELS.exportsFiltered,
+    (runId: string, format: 'xlsx' | 'pdf', query: ReportQuery) =>
+      exportFilteredRun(runId, format, query, emitProgress('export', runId)),
   );
 }
