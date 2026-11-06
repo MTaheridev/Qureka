@@ -7,10 +7,20 @@
 
 **Project:** Qureka  
 **Slogan:** Data Speaks. We Listen.  
-**Updated:** 2026-10-27  
+**Updated:** 2026-11-06  
 **Category:** Desktop AI reporting tool  
+**Docs:** [`README.md`](../../README.md) · [`docs/OVERVIEW.md`](../../docs/OVERVIEW.md)  
+
 
 ---
+
+## Brand mark
+
+- **Source:** `assets/brand/qureka-logo.png`
+- **UI / favicon:** `public/logo.png`, `public/favicon-32.png`
+- **Desktop / installer:** `build/icon.png` (also `package.json` → `build.icon`)
+- **Usage:** Circular crop in header brand bubble, welcome hero, and bridge empty state via `BrandLogo`
+- **Motif:** Circular navy badge; silver stylized “Q” with database + chart + sparkle cutouts
 
 ## Direction
 

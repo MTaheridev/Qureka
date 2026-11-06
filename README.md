@@ -1,170 +1,442 @@
-# Qureka
+<p align="center">
+  <img src="public/logo.png" alt="Qureka" width="120" height="120" />
+</p>
 
-**Data Speaks. We Listen.**
+<h1 align="center">Qureka</h1>
 
-Desktop app for asking natural-language questions against read-only databases. Built with **Electron**, **Next.js** (static export), and **Prisma** (local SQLite).
+<p align="center">
+  <strong>Data Speaks. We Listen.</strong>
+</p>
 
-## What it does
+<p align="center">
+  Ask your database anything — in plain language.<br/>
+  A desktop AI reporting app that never writes to your data.
+</p>
 
-1. Configure AI models (OpenAI- or Anthropic-compatible APIs).
-2. Create a **project** from Postgres, MySQL, MSSQL, or SQLite.
-3. Probe credentials for read-only access; writable accounts are blocked.
-4. Onboard: AI asks clarifying questions, then builds a knowledge base.
-5. Open **one or more chats** per project: conceptual answers from the knowledge base, or SELECT-only SQL with CSV / XLSX / PDF export.
-6. Safety limits: write SQL is rejected; secret/PII-looking columns cannot be selected; prompts refuse dumps, secrets, security bypasses, and prompt-injection overrides. Untrusted chat/knowledge/memory text is delimited so the model treats it as data, not instructions. List/ranking answers prefer name/title/description and omit UIDs unless the user asks for them.
-7. Settings: English LTR / Persian RTL for the UI; in chat the AI matches each message’s language (EN or FA). Dark/light theme. AI SQL is never shown — only results. No manual SQL editor.
+<p align="center">
+  <img alt="version" src="https://img.shields.io/badge/version-0.1.2-3067c4?style=for-the-badge" />
+  <img alt="platform" src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows-07101c?style=for-the-badge" />
+  <img alt="stack" src="https://img.shields.io/badge/Electron%20%2B%20Next.js%20%2B%20Prisma-2dd4bf?style=for-the-badge&labelColor=07101c" />
+  <img alt="license" src="https://img.shields.io/badge/license-UNLICENSED-fb7185?style=for-the-badge&labelColor=07101c" />
+</p>
 
-## Stack
+<p align="center">
+  <a href="#-what-it-does">What it does</a> ·
+  <a href="#-how-to-use">How to use</a> ·
+  <a href="#-how-it-works">How it works</a> ·
+  <a href="#-setup--scripts">Setup</a> ·
+  <a href="#-safety">Safety</a>
+</p>
 
-| Layer | Tech |
+---
+
+## ✨ What it does
+
+Qureka turns a **read-only** database into a conversational reporting workspace.
+
+| You say… | Qureka does… |
 | --- | --- |
-| UI | Next.js 16 App Router → static `out/` · Google Sans (EN) / Vazirmatn (FA) |
-| Motion | Spotlight Card, Shiny Text (flat solid backgrounds — no aurora) |
-| Desktop | Electron 45 (preload bridge, context isolation) |
-| App DB | Prisma 7 + libSQL SQLite |
-| Engines | `pg`, `mysql2`, `mssql`, `@libsql/client` |
-| AI | OpenAI / Anthropic-compatible HTTP |
+| “Top 10 customers by revenue this quarter” | Writes safe `SELECT` SQL, runs it, shows a table |
+| “What does the `orders` table mean?” | Answers from the project knowledge base |
+| “Export that” | Saves **CSV**, **Excel**, or **PDF** |
 
-## Layout
-
-```
-electron/          Main process, IPC, DB engines, AI, exports
-  ai/              Prompts, client, JSON parsing
-  db/              Prisma client, migrations, paths
-  engines/         Postgres/MySQL/MSSQL/SQLite + SQL guard
-  export/          CSV / XLSX / PDF
-  ipc/             Channel registration
-  services/        Domain logic (models, connections, chat, …)
-src/               Next.js UI
-  app/             Shell page + layout
-  components/      Connections, models, workspace, chat, …
-  components/bits/ SoftAurora, SpotlightCard, ShinyText, guided steps
-design-system/     ui-ux-pro-max MASTER tokens
-  lib/             API bridge helpers, hooks, formatters
-shared/ipc.ts      Shared IPC channel names + TypeScript contracts
-prisma/            Schema + migrations (app metadata DB)
-generated/prisma/  Prisma client output (gitignored)
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│                         QUREKA DESKTOP                          │
+│                                                                 │
+│   🧠 AI model          🗄️ Read-only DB         💬 Plain chat   │
+│   (OpenAI / Anthropic  (Postgres · MySQL        (EN ↔ FA auto) │
+│    compatible APIs)     · MSSQL · SQLite)                       │
+│                                                                 │
+│              ↓ schema learn  →  knowledge  →  answers           │
+│                                                                 │
+│              📊 Results only  ·  SQL hidden  ·  Export ready    │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-## Product flow
+### Highlights
 
-**Shell:** Flat solid background. Brand left; project bubble + settings gear right (RTL mirrors). Chat column max-width `3xl` (48rem), borderless. Project bubble → searchable switcher. Gear → settings bubbles. Model picker in composer. Projects use the same SpotlightCard grid as Models. Light theme uses the same primary blue/teal as dark. Chat result tables use theme tokens (readable in light and dark).
+```mermaid
+mindmap
+  root((Qureka))
+    Ask in plain language
+      Conceptual answers
+      Data tables
+      CSV / XLSX / PDF
+    Connect safely
+      Read-only probe
+      SELECT-only guard
+      Encrypted secrets
+    Learn your schema
+      Onboarding Q&A
+      Knowledge base
+      Chat memory
+    Feel at home
+      English LTR
+      Persian RTL
+      Dark / Light
+```
 
-**Project setup flow:** Create project (read-only probe + schema with FK + name/type-inferred relations) → open **Setup** → optional plain-language **database description** → generate **bilingual** onboarding questions (EN/FA toggle while answering) → build knowledge base → status `ready` → chat + exports.
+| Capability | Detail |
+| :---: | --- |
+| 🗣️ **Natural language** | No SQL editor — AI writes queries; you only see results |
+| 🔒 **Read-only by design** | Writable credentials are rejected at connect time |
+| 🧩 **Multi-engine** | Postgres · MySQL · MSSQL · SQLite |
+| 📚 **Project knowledge** | Onboarding + bilingual Q&A → durable knowledge base |
+| 🧠 **Learns from chat** | Insights flush when you leave a chat or after idle |
+| 🌍 **Bilingual UI** | English LTR / فارسی RTL; chat language follows each message |
+| 🎨 **Desktop-native** | Electron shell, encrypted API keys, local SQLite vault |
 
-**Schema relations:** Declared foreign keys plus inferred joins (`*_id` / matching PK names). Both appear in the schema text fed to the model (`FK` vs `INFERRED`).
+---
 
-**Chat language:** Reply language follows the latest user message (Persian script → FA, otherwise EN), not the UI language setting.
+## 🚀 How to use
 
-**Project memory:** Each project’s knowledge base learns from chats. Insights buffer during conversation and flush when you leave a chat / switch conversation / leave the Chat tab, or after ~60s idle. Shared across all chats on that project.
-
-**Knowledge build:** Uses provider JSON mode when available, stricter JSON extraction/repair, and a one-shot repair retry if the model returns broken JSON.
-
-**Loading UX:** Chat uses a Claude-style rotating “Thinking…” indicator while the model works. Project create uses the same pattern in **analyzing** mode while credentials/schema are probed.
-
-**Connection status:** `draft` → `questions` → `ready` | `failed`.
-
-**Safety:** `electron/engines/sql-guard.ts` blocks non-SELECT keywords and sensitive column projections (passwords, tokens, keys, SSN/card/IBAN-like names, …). Connection create/reprobe verify read-only credentials. AI system policy forbids leaking secrets/private data, discussing app security flaws, or obeying jailbreak/injection text inside user/history/knowledge/memory blocks.
-
-## Scripts
+### 1 · Install & run (dev)
 
 ```bash
-npm install          # once
-npm run db:generate  # once (or after schema changes)
-npm run db:migrate   # once (creates prisma/easy-reporter.db)
-npm run dev          # Next on :3000 + Electron window
-npm run build        # Static UI + Electron bundle
-npm run typecheck
-npm run dist:linux   # AppImage + deb
-npm run dist:deb     # .deb only (x64)
-npm run dist:win     # NSIS + portable
+npm install
+npm run db:generate
+npm run db:migrate
+npm run dev
 ```
 
-`.deb` output: `release/qureka_<version>_amd64.deb`.
+> Open the **Electron window** — the browser alone has no IPC bridge.
 
-**Upgrade without losing data**
+### 2 · Three-step product flow
 
-1. Keep `package.json` fields stable across releases: `name` (`qureka`), `build.appId`, `linux.executableName`. Only bump `version` (e.g. `0.0.1` → `0.0.2`).
-2. Build and install over the old package (do **not** `apt purge` / delete `~/.config/qureka`):
+```mermaid
+flowchart LR
+  A["① AI brain"] --> B["② Project"]
+  B --> C["③ Ask"]
+
+  A1["Add OpenAI / Anthropic<br/>compatible model"] -.-> A
+  B1["Connect DB<br/>read-only probe"] -.-> B
+  B2["Answer onboarding<br/>build knowledge"] -.-> B
+  C1["Chat · tables · exports"] -.-> C
+
+  style A fill:#3067c4,stroke:#07101c,color:#fff
+  style B fill:#14b8a6,stroke:#07101c,color:#fff
+  style C fill:#38bdf8,stroke:#07101c,color:#07101c
+```
+
+| Step | Where | What you do |
+| :---: | --- | --- |
+| **1** | **AI brain** | Add a model (name, base URL, model id, API key). Prefer UI entry — keys are encrypted at rest. |
+| **2** | **Projects** | Create a project → pick engine → enter credentials → wait for the read-only probe + schema scan. |
+| **3** | **Setup → Chat** | Optional business brief → bilingual clarifying questions → build knowledge → ask anything. |
+
+### 3 · Day-to-day chat
+
+```text
+┌──────────────────────────────────────────────────────────────┐
+│  Qureka                                              ⚙  ▣    │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │  You: Show monthly revenue for 2025                    │  │
+│  │                                                        │  │
+│  │  Qureka: Here’s the breakdown…                         │  │
+│  │  ┌──────────┬───────────┐                              │  │
+│  │  │ Month    │ Revenue   │   [Excel] [CSV] [PDF]        │  │
+│  │  ├──────────┼───────────┤                              │  │
+│  │  │ Jan      │ 128,400   │                              │  │
+│  │  │ Feb      │ 141,200   │                              │  │
+│  │  └──────────┴───────────┘                              │  │
+│  └────────────────────────────────────────────────────────┘  │
+│  [ model ▾ ]  Ask about Acme ERP…                    [Send]  │
+└──────────────────────────────────────────────────────────────┘
+```
+
+- **Conceptual** questions → written answers from knowledge / memory  
+- **Data** questions → safe `SELECT` → result grid → export  
+- **SQL is never shown** in the UI — only business language + tables  
+- Switch projects via the project bubble; open settings via the gear  
+
+### 4 · Packaged installs
+
+| Platform | Command | Output |
+| --- | --- | --- |
+| Linux AppImage + `.deb` | `npm run dist:linux` | `release/` |
+| Debian only | `npm run dist:deb` | `release/qureka_<version>_amd64.deb` |
+| Windows NSIS + portable | `npm run dist:win` | `release/` |
+
+**Upgrade without losing data** — bump `version` only; keep `name`, `desktopName`, and `appId` stable. Install over the old package. User data lives in `~/.config/qureka/` (Linux).
 
 ```bash
-# edit package.json "version", then:
 npm run dist:deb
 sudo apt install ./release/qureka_<version>_amd64.deb
 ```
 
-`apt install` of a newer `qureka_*.deb` replaces the app binaries under `/opt` (or similar) and leaves user data alone. Projects, chats, settings, and `easy-reporter.db` live in Electron `userData` (`~/.config/qureka/`), outside the package.
+---
 
-First install is the same command. `sudo apt remove qureka` uninstalls the app but usually keeps `~/.config/qureka`; `purge` still does not delete that folder — only deleting it by hand wipes data.
+## ⚙️ How it works
 
-### Dev mode
+### Architecture
 
-```bash
-npm run dev
+```mermaid
+flowchart TB
+  subgraph UI["Renderer · Next.js static export"]
+    Shell["AgentShell"]
+    Chat["ChatPanel"]
+    Setup["Setup / Knowledge"]
+    Models["ModelsView"]
+  end
+
+  subgraph Bridge["Preload"]
+    API["window.qureka"]
+  end
+
+  subgraph Main["Electron main"]
+    IPC["IPC handlers"]
+    Services["Services<br/>models · connections · onboarding · chat · exports"]
+    AI["AI client + prompts"]
+    Guard["SQL guard"]
+    Engines["DB engines<br/>pg · mysql2 · mssql · libsql"]
+    Prisma["Prisma · local SQLite vault"]
+  end
+
+  subgraph External["Your world"]
+    LLM["OpenAI / Anthropic<br/>compatible APIs"]
+    DBs[("Postgres / MySQL<br/>MSSQL / SQLite")]
+  end
+
+  Shell --> API
+  Chat --> API
+  Setup --> API
+  Models --> API
+  API --> IPC
+  IPC --> Services
+  Services --> AI
+  Services --> Guard
+  Services --> Engines
+  Services --> Prisma
+  AI --> LLM
+  Engines --> DBs
+  Guard --> Engines
 ```
 
-Starts Next.js at `http://localhost:3000`, then opens Electron pointed at that URL (`QUREKA_DEV=1`). Use the Electron window — the browser alone has no IPC bridge.
+### Request lifecycle (chat)
 
-After changing `electron/` or `shared/ipc.ts`, restart `npm run dev` (or at least rebuild with `npm run build:electron` and relaunch Electron). A stale main process shows errors like `No handler registered for 'settings:set'`.
+```mermaid
+sequenceDiagram
+  participant U as You
+  participant UI as Renderer
+  participant M as Main / Chat service
+  participant L as LLM
+  participant G as SQL guard
+  participant D as Database
 
-`npm run dev` passes `--no-sandbox` and `--ozone-platform=x11` so Electron starts cleanly on Linux (chrome-sandbox / Wayland quirks).
+  U->>UI: Plain-language question
+  UI->>M: chat:ask
+  M->>L: Schema + knowledge + memory + history
+  L-->>M: JSON · answer OR query mode
+  alt Conceptual answer
+    M-->>UI: Markdown answer
+  else Data query
+    M->>G: Validate SELECT-only
+    G->>D: Run query
+    D-->>M: Rows
+    M-->>UI: Table + export handles
+  end
+  Note over M: Learning buffer flushes on leave / idle
+```
 
-`next.config.ts` sets `assetPrefix: './'` only in production. Using that prefix during `next dev` broke App Router hydration in Electron (UI stuck on “Loading connections”).
+### Project status machine
 
-## Config
+```mermaid
+stateDiagram-v2
+  [*] --> draft: Create + probe
+  draft --> questions: Onboarding started
+  questions --> ready: Knowledge built
+  draft --> failed: Probe / schema error
+  questions --> failed: Build error
+  failed --> draft: Fix & reprobe
+  ready --> [*]
+```
+
+| Status | Meaning |
+| --- | --- |
+| `draft` | Connected / probed; setup not finished |
+| `questions` | Clarifying questions in progress |
+| `ready` | Knowledge base ready — chat unlocked |
+| `failed` | Probe, schema, or knowledge build failed |
+
+### What the AI sees
+
+```text
+┌─ System policy (non-negotiable) ─────────────────────────────┐
+│  No secrets · no writes · no jailbreaks · no SQL in replies  │
+└──────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─ Trusted context ────────────────────────────────────────────┐
+│  Schema text (FK + inferred joins)                           │
+│  Business brief · Onboarding Q&A · Knowledge · Chat memory   │
+└──────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─ Untrusted data blocks ──────────────────────────────────────┐
+│  User message · history · samples  (treated as DATA only)    │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Schema intelligence
+
+Declared foreign keys **and** name-inferred joins (`*_id` ↔ matching PKs) are fed to the model as `FK` vs `INFERRED` edges — so reports can join tables even when the DB omitted constraints.
+
+### Local vault (Prisma)
+
+| Model | Role |
+| --- | --- |
+| `AiModel` | Provider configs (API key encrypted) |
+| `DbConnection` | Projects + probe report + schema cache |
+| `OnboardingQuestion` | Bilingual clarifying Q&A |
+| `KnowledgeBase` | Summary, markdown, glossary, chat memory |
+| `Conversation` / `Message` / `QueryRun` | Chats + result spill for exports |
+
+Dev DB: `prisma/easy-reporter.db` · Packaged: OS user-data directory.
+
+---
+
+## 🛡 Safety
+
+```text
+          ┌──────────────────┐
+   Creds  │ Read-only probe  │──✗── writable account rejected
+          └────────┬─────────┘
+                   ▼
+          ┌──────────────────┐
+   SQL    │  sql-guard.ts    │──✗── INSERT/UPDATE/DDL/… blocked
+          │  SELECT-only     │──✗── secret/PII-looking columns blocked
+          └────────┬─────────┘
+                   ▼
+          ┌──────────────────┐
+   Prompt │ Safety policy    │──✗── dumps, jailbreaks, key leaks refused
+          └──────────────────┘
+```
+
+- Credentials & API keys stored encrypted in the local vault  
+- Untrusted chat / knowledge / memory text is delimited so the model treats it as **data**, not instructions  
+- List/ranking answers prefer name/title/description — UIDs omitted unless you ask  
+
+---
+
+## 🧰 Setup & scripts
+
+### Environment
 
 Copy `.env.example` → `.env`:
 
-```
+```env
 DATABASE_URL="file:./easy-reporter.db"
-AVALAI_API_KEY=               # optional; prefer UI entry
+
+# Optional seed defaults — prefer adding the model in the UI
+AVALAI_API_KEY=
 AVALAI_MODEL="claude-haiku-5-5"
 AVALAI_BASE_URL="https://api.avalai.ir/v1"
 ```
 
-Dev uses `prisma/easy-reporter.db` (resolved from `dist-electron/../prisma`). Packaged builds store the DB in the OS user-data directory.
+### Commands
 
-If you see `no such table: main.AiModel`, the app opened an empty DB (migrations skipped). Delete any stray empty `easy-reporter.db`, then restart — startup now fails loudly when migrations/tables are missing.
+| Script | Purpose |
+| --- | --- |
+| `npm run dev` | Next `:3000` + Electron (`QUREKA_DEV=1`) |
+| `npm run build` | Static UI (`out/`) + Electron bundle |
+| `npm run typecheck` | TS check (app + electron) |
+| `npm run db:generate` | Prisma client |
+| `npm run db:migrate` | Apply migrations |
+| `npm run dist:linux` / `dist:deb` / `dist:win` | Installers |
 
-### AvalAI
+After changing `electron/` or `shared/ipc.ts`, restart `npm run dev` (stale main = missing IPC handlers).
 
-OpenAI-compatible Chat Completions: `https://api.avalai.ir/v1` ([quickstart](https://docs.avalai.ir/fa/quickstart)).
+### Repo map
 
-Default model: `claude-haiku-5-5` (protocol: OpenAI compatible).
-
-```bash
-# After setting AVALAI_API_KEY in .env:
-node .tmp-e2e/seed-avalai.cjs
+```text
+qureka/
+├── electron/           Main process · IPC · engines · AI · exports
+│   ├── ai/             Prompts, client, JSON parse/repair
+│   ├── engines/        Postgres / MySQL / MSSQL / SQLite + SQL guard
+│   ├── services/       Domain logic
+│   └── export/         CSV · XLSX · PDF
+├── src/                Next.js UI (static export → out/)
+│   ├── app/            Shell page + layout
+│   └── components/     Chat, setup, models, bits (Spotlight / Shiny)
+├── shared/ipc.ts       Channel names + TypeScript contracts
+├── prisma/             App metadata schema + migrations
+├── public/             logo.png · favicon · fonts
+├── build/              Desktop / installer icon
+├── assets/brand/       Source brand mark
+└── design-system/      MASTER tokens & UX rules
 ```
 
-Or add the model in **AI models** in the UI (preferred — Electron encrypts the key).
+### Stack
 
-## IPC surface
+<p align="center">
 
-All renderer calls go through `window.qureka` (see `shared/ipc.ts`): models, connections, onboarding, knowledge, chat, exports, and progress events.
+| Layer | Tech |
+| :---: | --- |
+| UI | Next.js 16 App Router → static `out/` |
+| Desktop | Electron 45 · preload · context isolation |
+| App DB | Prisma 7 + libSQL SQLite |
+| Engines | `pg` · `mysql2` · `mssql` · `@libsql/client` |
+| AI | OpenAI- / Anthropic-compatible HTTP |
+| Fonts | Google Sans (EN) · Vazirmatn (FA) · JetBrains Mono |
+| Motion | Spotlight Card · Shiny Text · Guided steps |
 
-## Manual e2e (local)
+</p>
 
-Harness lives in `.tmp-e2e/`: mock OpenAI server, sample SQLite store, CDP drive script, screenshots.
+### Brand palette
+
+```text
+ ██████  Background   #07101c
+ ██████  Surface      #0a1321
+ ██████  Primary      #3067c4
+ ██████  Accent       #2dd4bf
+ ██████  Accent 2     #38bdf8
+ ██████  OK / Warn / Bad   #34d399  #fbbf24  #fb7185
+```
+
+---
+
+## 🔌 IPC surface
+
+All renderer calls go through `window.qureka` (`shared/ipc.ts`):
+
+```text
+app · settings · models · connections · onboarding
+knowledge · chat · exports · progress events
+```
+
+---
+
+## 🧪 Manual e2e (local)
+
+Harness in `.tmp-e2e/` — mock AI, sample SQLite, CDP drive script.
 
 ```bash
-# 1. Reset app metadata DB
 node .tmp-e2e/reset-db.cjs
-
-# 2. Mock AI on :4599
 node .tmp-e2e/mock-ai.cjs
-
-# 3. Packaged UI + Electron with CDP (rebuild first if needed: npm run build)
 ./node_modules/.bin/electron . --remote-debugging-port=9222 --no-sandbox
-
-# 4. Drive the UI
 node .tmp-e2e/drive.mjs
 ```
 
-Covers: add AI model → SQLite connection + read-only probe → onboarding → knowledge base → chat queries → write-SQL rejection → manual SELECT.
+Covers: add model → SQLite + read-only probe → onboarding → knowledge → chat → write-SQL rejection.
 
-`--no-sandbox` is needed when `chrome-sandbox` is not root-owned (common in local/dev trees).
+---
 
-## Version
+## 📎 Links
 
-`0.0.1` — private / unlicensed.
+| | |
+| --- | --- |
+| Author | [Mohammad Taheri](https://taheri.vercel.app) |
+| Repository | [MTaheridev/Qureka](https://github.com/MTaheridev/Qureka.git) |
+| Design system | [`design-system/qureka/MASTER.md`](design-system/qureka/MASTER.md) |
+| Docs overview | [`docs/OVERVIEW.md`](docs/OVERVIEW.md) |
+
+---
+
+<p align="center">
+  <img src="public/logo.png" alt="" width="48" height="48" />
+  <br/>
+  <sub><strong>Qureka</strong> · Data Speaks. We Listen.</sub>
+  <br/>
+  <sub>v0.1.2 · private / unlicensed</sub>
+</p>
