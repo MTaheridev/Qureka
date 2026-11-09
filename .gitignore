@@ -41,3 +41,5 @@ coverage/
 .idea/
 .vscode/
 Thumbs.db
+.agents/
+.design-system
